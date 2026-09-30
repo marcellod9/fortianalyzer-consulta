@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consulta FortiAnalyzer</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1d2330; --muted:#6b7280; --line:#e3e6eb; --accent:#0b5cad; --bad:#b42318; --good:#067647; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; background:var(--accent); color:#fff; }
+  header h1 { margin:0; font-size:18px; }
+  main { padding:16px 20px; }
+  form { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px;
+         display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  input, select { padding:7px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; color:var(--fg); background:#fff; }
+  select[multiple] { height:74px; }
+  .actions { display:flex; gap:8px; align-items:end; }
+  button { white-space:nowrap; padding:8px 14px; border:0; border-radius:6px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.sec { background:#e8eef6; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:wait; }
+  #status { margin:12px 0; color:var(--muted); }
+  #status.err { color:var(--bad); }
+  .wrap { overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; max-height:65vh; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { position:sticky; top:0; background:#f0f2f5; }
+  td.accept, td.passthrough { color:var(--good); } td.deny, td.blocked, td.block { color:var(--bad); font-weight:600; }
+  tr:hover td { background:#f7f9fc; }
+</style>
+</head>
+<body>
+<header><h1>Consulta de logs · FortiAnalyzer</h1></header>
+<main>
+<form id="f">
+  <label>ADOM <select id="adom"></select></label>
+  <label>Firewalls (vazio = todos) <select id="devices" multiple></select></label>
+  <label>Tipo de log
+    <select id="logtype">
+      <option value="traffic">Tráfego</option><option value="webfilter">Filtro web</option>
+      <option value="app-ctrl">Controle de aplicação</option><option value="event">Eventos</option>
+      <option value="dns">DNS</option><option value="ips">IPS</option><option value="virus">Antivírus</option>
+    </select></label>
+  <label>Início <input type="datetime-local" id="start" required></label>
+  <label>Fim <input type="datetime-local" id="end" required></label>
+  <label>IP de origem <input id="srcip" placeholder="172.16.1.10"></label>
+  <label>IP de destino <input id="dstip"></label>
+  <label>Porta de destino <input id="dstport" type="number" min="1" max="65535"></label>
+  <label>Usuário (contém) <input id="user" placeholder="joao.silva"></label>
+  <label>Site/host (contém) <input id="hostname" placeholder="youtube"></label>
+  <label>Ação
+    <select id="action"><option value="">Qualquer</option><option>accept</option><option>deny</option>
+      <option>blocked</option><option>passthrough</option></select></label>
+  <label>Limite <input id="limit" type="number" value="500" min="1" max="1000"></label>
+  <div class="actions"><button id="go">Buscar</button><button type="button" class="sec" id="csv" disabled>Exportar CSV</button></div>
+</form>
+<div id="status">Preencha os filtros e clique em Buscar.</div>
+<div class="wrap"><table id="t"></table></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const COLS = ["itime","devname","srcip","user","dstip","dstport","hostname","app","action","policyid","sentbyte","rcvdbyte"];
+const LABELS = {itime:"Data/hora",devname:"Firewall",srcip:"Origem",user:"Usuário",dstip:"Destino",dstport:"Porta",
+  hostname:"Host",app:"Aplicação",action:"Ação",policyid:"Política",sentbyte:"Enviado",rcvdbyte:"Recebido"};
+let last = [];
+
+const pad = n => String(n).padStart(2, "0");
+const local = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const now = new Date(); $("end").value = local(now); $("start").value = local(new Date(now - 3600e3));
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body));
+  return body;
+}
+function status(msg, err) { $("status").textContent = msg; $("status").className = err ? "err" : ""; }
+
+async function loadAdoms() {
+  try {
+    const adoms = await api("/api/adoms");
+    $("adom").innerHTML = adoms.map(a => `<option>${a.name}</option>`).join("");
+    loadDevices();
+  } catch (e) { status("Erro ao carregar ADOMs: " + e.message, true); }
+}
+async function loadDevices() {
+  const devs = await api(`/api/adoms/${encodeURIComponent($("adom").value)}/devices`).catch(() => []);
+  $("devices").innerHTML = devs.map(d => `<option value="${d.sn}">${d.name} (${d.ip || ""})</option>`).join("");
+}
+$("adom").onchange = loadDevices;
+
+$("f").onsubmit = async ev => {
+  ev.preventDefault();
+  const v = id => $(id).value.trim() || null;
+  const q = {
+    adom: $("adom").value, logtype: $("logtype").value,
+    devices: [...$("devices").selectedOptions].map(o => o.value),
+    start: $("start").value + ":00", end: $("end").value + ":00",
+    srcip: v("srcip"), dstip: v("dstip"), user: v("user"), hostname: v("hostname"), action: v("action"),
+    dstport: $("dstport").value ? +$("dstport").value : null, limit: +$("limit").value || 500,
+  };
+  $("go").disabled = true; status("Buscando no FortiAnalyzer…");
+  const t0 = performance.now();
+  try {
+    const r = await api("/api/logs", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(q)});
+    last = r.logs; render(last);
+    status(`${r.returned} de ${r.total} registros · filtro: ${r.filter || "(nenhum)"} · ${((performance.now()-t0)/1000).toFixed(1)}s`);
+    $("csv").disabled = !last.length;
+  } catch (e) { status("Erro: " + e.message, true); }
+  finally { $("go").disabled = false; }
+};
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function render(rows) {
+  if (!rows.length) { $("t").innerHTML = "<tr><td>Nenhum registro encontrado.</td></tr>"; return; }
+  $("t").innerHTML = "<thead><tr>" + COLS.map(c => `<th>${LABELS[c]}</th>`).join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr>" + COLS.map(c => `<td class="${c==="action"?esc(r[c]):""}">${esc(r[c])}</td>`).join("") + "</tr>").join("") + "</tbody>";
+}
+
+$("csv").onclick = () => {
+  const keys = [...new Set(last.flatMap(Object.keys))];
+  const cell = x => `"${String(x ?? "").replace(/"/g, '""')}"`;
+  const csv = [keys.join(";"), ...last.map(r => keys.map(k => cell(r[k])).join(";"))].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], {type:"text/csv"}));
+  a.download = `logs-${$("adom").value}-${Date.now()}.csv`; a.click();
+};
+loadAdoms();
+</script>
+</body>
+</html>

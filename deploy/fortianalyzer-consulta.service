@@ -1,0 +1,19 @@
+[Unit]
+Description=Consulta de logs do FortiAnalyzer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=fazconsulta
+Group=fazconsulta
+WorkingDirectory=/opt/fortianalyzer-consulta
+EnvironmentFile=/etc/fortianalyzer-consulta/env
+ExecStart=/opt/fortianalyzer-consulta/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
