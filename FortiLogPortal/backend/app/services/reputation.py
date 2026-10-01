@@ -163,11 +163,15 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         run("workbench", alerts)
         database.temp_set(src_key, {"sources": dict(sources), "errors": dict(errors)}, ttl=1800)
 
-    if use_sandbox and ioc_type == "url":
+    if use_sandbox and ioc_type in ("url", "domain"):
+        # domínio vai ao Sandbox como a página inicial do site (http://dominio/)
+        sandbox_url = value if ioc_type == "url" else f"http://{value}/"
         if not settings.v1_sandbox_enabled:
             errors["sandbox"] = "Envio ao Sandbox desabilitado (V1_SANDBOX_ENABLED=false)."
         else:
-            run("sandbox", lambda: client.sandbox_submit_url(value))
+            run("sandbox", lambda: client.sandbox_submit_url(sandbox_url))
+    elif use_sandbox and ioc_type == "ip":
+        errors["sandbox"] = "O Sandbox analisa URLs; para IP ele não é usado."
 
     if sandbox_task:
         def finished():
