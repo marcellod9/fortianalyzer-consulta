@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Reputação{% endblock %}
+{% block heading %}<i class="bi bi-shield-check"></i> Reputação e IOC (Trend Vision One){% endblock %}
+{% block content %}
+<form id="form" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-6"><label class="form-label small">URL, domínio ou IP</label>
+      <input class="form-control" name="indicator" placeholder="https://exemplo.com · google.com · 8.8.8.8" maxlength="2048"></div>
+    <div class="col-md-2"><label class="form-label small">Tipo</label>
+      <select class="form-select" name="type"><option value="auto">Detectar</option><option value="url">URL</option><option value="domain">Domínio</option><option value="ip">IP</option></select></div>
+    <div class="col-md-2">
+      <div class="form-check" title="{% if not sandbox_enabled %}Desabilitado: defina V1_SANDBOX_ENABLED=true em config\.env{% else %}Envia a URL para análise dinâmica (consome cota){% endif %}">
+        <input class="form-check-input" type="checkbox" name="sandbox" id="sb" {% if not sandbox_enabled %}disabled{% endif %}>
+        <label class="form-check-label small" for="sb">Analisar URL no Sandbox</label></div></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button></div>
+  </div>
+  <div class="small text-body-secondary mt-2">Também aceita vários indicadores, um por linha, no campo abaixo.</div>
+  <textarea class="form-control form-control-sm mt-1" id="bulk" rows="2" placeholder="google.com&#10;1.1.1.1"></textarea>
+  <div class="mt-2 d-flex"><span id="exports" class="ms-auto"></span></div>
+</form>
+<div id="sandbox"></div>
+<div id="result"></div>
+{% include "_reputation_card.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form"), btn = document.getElementById("btn");
+  async function one(indicator, type, sandbox, target) {
+    const r = await FLP.api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox } });
+    renderReputation(target, r);
+    return r;
+  }
+  async function pollSandbox(taskId) {
+    const box = document.getElementById("sandbox");
+    box.innerHTML = `<div class="alert alert-info small"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${FLP.esc(taskId)})...</div>`;
+    for (let i = 0; i < 60; i++) {
+      try {
+        const s = await FLP.api(`/api/v1/sandbox/${encodeURIComponent(taskId)}`);
+        if (s.status === "succeeded") {
+          const r = s.resultado;
+          box.innerHTML = `<div class="alert alert-${FLP.verdictClass(r.risco === "high" ? "Malicioso" : r.risco === "medium" ? "Suspeito" : "")} small">
+            <b>Sandbox concluído:</b> risco ${FLP.esc(r.severidade)} · ameaças: ${FLP.esc((r.tipos_ameaca || []).join(", ") || "nenhuma")}
+            · detecções: ${FLP.esc((r.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${FLP.esc(r.concluido_em)}</div>`;
+          return;
+        }
+        if (s.erro) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(s.erro)}</div>`; return; }
+      } catch (e) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(e.message)}</div>`; return; }
+      await new Promise((ok) => setTimeout(ok, 10000));
+    }
+  }
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    FLP.busy(btn, true);
+    const d = FLP.formData(form), res = document.getElementById("result");
+    const bulk = document.getElementById("bulk").value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    if (!bulk.length && !d.indicator) { FLP.toast("Informe um IP, domínio ou URL.", "warning"); FLP.busy(btn, false); return; }
+    try {
+      if (bulk.length) {
+        res.innerHTML = "";
+        for (const ind of bulk.slice(0, 20)) {
+          const div = document.createElement("div"); res.appendChild(div);
+          try { await one(ind, "auto", false, div); } catch (e) { div.innerHTML = `<div class="alert alert-danger small">${FLP.esc(ind)}: ${FLP.esc(e.message)}</div>`; }
+        }
+        document.getElementById("exports").innerHTML = "";
+      } else {
+        const r = await one(d.indicator, d.type, !!d.sandbox, res);
+        FLP.exportButtons(document.getElementById("exports"), r.result_id);
+        const sb = r.detalhes && r.detalhes.sandbox;
+        if (sb && sb.task_id) pollSandbox(sb.task_id);
+      }
+    } catch (e) { FLP.toast(e.message, "danger"); }
+    finally { FLP.busy(btn, false); }
+  });
+});
+</script>
+{% endblock %}

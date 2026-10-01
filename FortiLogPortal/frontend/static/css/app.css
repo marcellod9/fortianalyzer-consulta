@@ -1,0 +1,52 @@
+:root {
+  --flp-sidebar: 230px;
+  --flp-accent: #1f4e79;
+}
+[data-bs-theme="dark"] { --flp-accent: #5b9bd5; }
+
+body { min-height: 100vh; }
+
+.flp-sidebar {
+  width: var(--flp-sidebar);
+  min-height: 100vh;
+  position: fixed; top: 0; left: 0;
+  background: var(--bs-tertiary-bg);
+  border-right: 1px solid var(--bs-border-color);
+  z-index: 1030;
+}
+.flp-sidebar .brand { font-weight: 700; color: var(--flp-accent); letter-spacing: .3px; }
+.flp-sidebar .nav-link { color: var(--bs-body-color); border-radius: .5rem; padding: .55rem .8rem; }
+.flp-sidebar .nav-link:hover { background: var(--bs-secondary-bg); }
+.flp-sidebar .nav-link.active { background: var(--flp-accent); color: #fff; }
+.flp-main { margin-left: var(--flp-sidebar); }
+
+@media (max-width: 991.98px) {
+  .flp-sidebar { position: static; width: 100%; min-height: auto; }
+  .flp-sidebar .nav { flex-direction: row !important; flex-wrap: wrap; }
+  .flp-main { margin-left: 0; }
+}
+
+.stat-card .value { font-size: 1.9rem; font-weight: 700; }
+.stat-card .label { color: var(--bs-secondary-color); font-size: .85rem; text-transform: uppercase; letter-spacing: .4px; }
+
+.table-logs { font-size: .82rem; }
+.table-logs td { vertical-align: middle; }
+.table-logs tbody tr { cursor: pointer; }
+.cell-trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.explain-card { border-left: 5px solid var(--bs-success); }
+.explain-card.blocked { border-left-color: var(--bs-danger); }
+.explain-card dt { color: var(--bs-secondary-color); font-weight: 500; }
+.explain-card dd { font-weight: 600; margin-bottom: .4rem; }
+
+.verdict { font-size: 1.4rem; font-weight: 700; }
+.risk-bar { height: 10px; border-radius: 5px; background: var(--bs-secondary-bg); overflow: hidden; }
+.risk-bar > div { height: 100%; }
+
+.top-list li { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem 0; border-bottom: 1px dashed var(--bs-border-color); }
+.top-list li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.spinner-overlay { display: none; }
+.loading .spinner-overlay { display: inline-block; }
+pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(--bs-tertiary-bg); padding: .75rem; border-radius: .5rem; }
+.chart-box { position: relative; height: 220px; }

@@ -1,0 +1,48 @@
+<template id="repTpl">
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+        <div><div class="small text-body-secondary">Indicador</div><div class="fw-semibold" data-f="indicador"></div></div>
+        <div><div class="small text-body-secondary">Reputação</div><span class="verdict badge" data-f="reputacao"></span></div>
+        <div style="min-width:180px"><div class="small text-body-secondary">Risk Score <b data-f="risk_score"></b>/100</div><div class="risk-bar"><div data-f="riskbar"></div></div></div>
+        <div class="ms-auto small text-body-secondary" data-f="meta"></div>
+      </div>
+      <dl class="row small mb-0">
+        <dt class="col-sm-3">Categoria</dt><dd class="col-sm-9" data-f="categoria"></dd>
+        <dt class="col-sm-3">Severidade</dt><dd class="col-sm-9" data-f="severidade"></dd>
+        <dt class="col-sm-3">Tipo da ameaça</dt><dd class="col-sm-9" data-f="tipo_ameaca"></dd>
+        <dt class="col-sm-3">IOC relacionados</dt><dd class="col-sm-9" data-f="iocs"></dd>
+        <dt class="col-sm-3">Última análise</dt><dd class="col-sm-9" data-f="ultima_analise"></dd>
+        <dt class="col-sm-3">Nível de confiança</dt><dd class="col-sm-9" data-f="confianca"></dd>
+        <dt class="col-sm-3">Fonte da informação</dt><dd class="col-sm-9" data-f="fontes"></dd>
+        <dt class="col-sm-3">Recomendações</dt><dd class="col-sm-9" data-f="recomendacoes"></dd>
+      </dl>
+      <div data-f="erros"></div>
+      <details class="mt-2"><summary class="small">Detalhes técnicos (Suspicious Objects, detecções, alertas)</summary><pre class="raw mt-2" data-f="detalhes"></pre></details>
+    </div>
+  </div>
+</template>
+<script>
+function renderReputation(container, r) {
+  const n = document.getElementById("repTpl").content.cloneNode(true);
+  const f = (k) => n.querySelector(`[data-f="${k}"]`);
+  f("indicador").textContent = `${r.indicador} (${r.tipo})`;
+  f("reputacao").textContent = r.reputacao;
+  f("reputacao").classList.add("text-bg-" + FLP.verdictClass(r.reputacao));
+  f("risk_score").textContent = r.risk_score;
+  f("riskbar").style.width = Math.max(3, r.risk_score) + "%";
+  f("riskbar").style.background = FLP.riskColor(r.risk_score);
+  f("meta").textContent = `Consultado em ${r.consultado_em}${r.cache ? " (cache)" : ""}` + (r.periodo ? ` · janela ${r.periodo.inicio} a ${r.periodo.fim}` : "");
+  ["categoria", "severidade", "ultima_analise", "confianca"].forEach((k) => f(k).textContent = r[k] ?? "-");
+  f("tipo_ameaca").textContent = (r.tipo_ameaca || []).join(", ") || "-";
+  f("fontes").textContent = (r.fontes || []).join(", ");
+  f("iocs").innerHTML = (r.iocs_relacionados || []).map((i) => `<span class="badge text-bg-secondary me-1">${FLP.esc(i.tipo)}: ${FLP.esc(i.valor)}</span>`).join("") || "-";
+  f("recomendacoes").innerHTML = "<ul class='mb-0 ps-3'>" + (r.recomendacoes || []).map((x) => `<li>${FLP.esc(x)}</li>`).join("") + "</ul>";
+  const errs = Object.entries(r.erros || {});
+  if (errs.length) f("erros").innerHTML = `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>` +
+    errs.map(([k, v]) => `<div>${FLP.esc(k)}: ${FLP.esc(v)}</div>`).join("") + `</div>`;
+  f("detalhes").textContent = JSON.stringify(r.detalhes, null, 2);
+  container.innerHTML = "";
+  container.appendChild(n);
+}
+</script>

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Bloqueios{% endblock %}
+{% block heading %}<i class="bi bi-slash-circle"></i> Por que foi bloqueado?{% endblock %}
+{% block content %}
+<p class="text-body-secondary">Informe o usuário, o IP da máquina ou o site. O portal procura bloqueios no filtro web, no firewall, no controle de aplicações e no filtro DNS, e mostra a regra e a política responsáveis.</p>
+<form id="form" class="card card-body mb-3">
+  <div class="row g-2">
+    <div class="col-md-3"><label class="form-label small">Usuário / login</label><input class="form-control form-control-sm" name="user" placeholder="joao.silva"></div>
+    <div class="col-md-3"><label class="form-label small">IP de origem (máquina)</label><input class="form-control form-control-sm" name="srcip" placeholder="10.10.1.25"></div>
+    <div class="col-md-3"><label class="form-label small">Site / domínio</label><input class="form-control form-control-sm" name="hostname" placeholder="facebook.com"></div>
+    <div class="col-md-3"><label class="form-label small">IP de destino</label><input class="form-control form-control-sm" name="dstip" placeholder="200.160.2.3"></div>
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+    <div class="col-md-3"><label class="form-label small">Firewall</label><select class="form-select form-select-sm" name="devices" id="devices"><option value="">Todos os firewalls</option></select></div>
+    {% include "_period.html" %}
+    <div class="col-md-1"><label class="form-label small">Limite</label><input type="number" class="form-control form-control-sm" name="limit" value="200" min="1" max="{{ max_results }}"></div>
+  </div>
+  <div class="mt-3 d-flex gap-2 align-items-center">
+    <button class="btn btn-primary" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Pesquisar bloqueios</button>
+    <span id="summary" class="small text-body-secondary"></span>
+    <span id="exports" class="ms-auto"></span>
+  </div>
+</form>
+<div id="errors"></div>
+<div class="row g-3">
+  <div class="col-xl-4"><h6>Explicação dos últimos bloqueios</h6><div id="explain"></div></div>
+  <div class="col-xl-8"><h6>Eventos</h6><div id="results"></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form"), btn = document.getElementById("btn");
+  FLP.setDefaultPeriod(document.getElementById("start"), document.getElementById("end"), 24);
+  FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), "{{ default_adom }}");
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    FLP.busy(btn, true);
+    document.getElementById("errors").innerHTML = "";
+    try {
+      const r = await FLP.api("/api/faz/blocks", { method: "POST", body: FLP.formData(form) });
+      document.getElementById("summary").textContent = `${r.returned} bloqueio(s) exibido(s) de ${r.total} encontrados`;
+      const errs = Object.entries(r.erros || {});
+      if (errs.length) document.getElementById("errors").innerHTML = `<div class="alert alert-warning small">` +
+        errs.map(([k, v]) => `<div><b>${FLP.esc(k)}</b>: ${FLP.esc(v)}</div>`).join("") + `</div>`;
+      document.getElementById("explain").innerHTML = r.rows.slice(0, 8).map(FLP.explainHtml).join("") ||
+        `<div class="alert alert-success">Nenhum bloqueio encontrado no período.</div>`;
+      FLP.renderLogTable(document.getElementById("results"), r.rows);
+      FLP.exportButtons(document.getElementById("exports"), r.result_id);
+    } catch (e) { FLP.toast(e.message, "danger"); }
+    finally { FLP.busy(btn, false); }
+  });
+});
+</script>
+{% endblock %}
