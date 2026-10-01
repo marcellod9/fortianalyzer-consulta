@@ -159,8 +159,7 @@ const FLP = (() => {
   // ---- colunas da lista (o usuário escolhe quais e em que ordem, como no FortiAnalyzer) ----
   const txt = (k, cls = "") => (r) => `<td class="${cls}" title="${esc(r[k])}">${esc(r[k])}</td>`;
   const LOG_COLUMNS = [
-    { key: "situacao", label: "Situação", on: true, td: (r) => `<td>${situationBadge(r)}</td>` },
-    { key: "quando", label: "Quando", on: true, td: (r) => `<td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>` },
+    { key: "quando", label: "Data/Hora", on: true, td: (r) => `<td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>` },
     { key: "vezes", label: "Vezes", on: true, grouped: true,
       td: (r) => `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` },
     { key: "quem", label: "Origem (usuário e IP)", head: "Origem", on: true, td: (r) => `<td>${r.usuario
@@ -170,6 +169,12 @@ const FLP = (() => {
         const sub = [r.aplicacao, r.servico].filter(Boolean).join(" · ");
         return `<td class="cell-dest"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
           <div class="small text-body-secondary cell-trunc" title="${esc(sub)}">${esc(sub)}</div></td>`; } },
+    { key: "site", label: "Site", on: true, td: txt("site", "cell-trunc") },
+    { key: "situacao", label: "Situação", on: true, td: (r) => `<td>${situationBadge(r)}</td>` },
+    { key: "regra", label: "Regra (nº e nome)", head: "Regra", on: true, td: (r) => {
+        const [id, nome] = r.regra_id !== undefined ? [r.regra_id, r.regra_nome] : String(r.regra || "").split(" - ");
+        return `<td class="cell-dest" title="${esc(r.regra)}"><div class="fw-semibold">${esc(id || r.regra || "")}</div>
+          <div class="small text-body-secondary cell-trunc">${esc(nome || "")}</div></td>`; } },
     { key: "motivo", label: "O que aconteceu", on: true, td: (r) => `<td class="cell-motivo">${esc(r.motivo)}</td>` },
     { key: "firewall", label: "Firewall", td: txt("firewall", "text-nowrap") },
     { key: "usuario", label: "Usuário", td: txt("usuario", "cell-trunc") },
@@ -177,14 +182,9 @@ const FLP = (() => {
     { key: "porta_origem", label: "Porta de origem", td: txt("porta_origem") },
     { key: "ip_destino", label: "IP de destino", td: txt("ip_destino", "text-nowrap") },
     { key: "servico", label: "Porta / serviço", td: txt("servico", "text-nowrap") },
-    { key: "site", label: "Site", td: txt("site", "cell-trunc") },
     { key: "url", label: "URL", td: txt("url", "cell-trunc") },
     { key: "aplicacao", label: "Aplicação", td: txt("aplicacao", "cell-trunc") },
     { key: "categoria", label: "Categoria", td: txt("categoria", "cell-trunc") },
-    { key: "regra", label: "Regra (nº e nome)", head: "Regra", td: (r) => {
-        const [id, nome] = r.regra_id !== undefined ? [r.regra_id, r.regra_nome] : String(r.regra || "").split(" - ");
-        return `<td class="cell-dest" title="${esc(r.regra)}"><div class="fw-semibold">${esc(id || r.regra || "")}</div>
-          <div class="small text-body-secondary cell-trunc">${esc(nome || "")}</div></td>`; } },
     { key: "politica", label: "Perfil de segurança", td: txt("politica", "cell-trunc") },
     { key: "interface_entrada", label: "Interface de entrada", td: txt("interface_entrada", "text-nowrap") },
     { key: "interface_saida", label: "Interface de saída", td: txt("interface_saida", "text-nowrap") },
@@ -202,6 +202,49 @@ const FLP = (() => {
     return [...saved, ...defaultCols().filter((c) => !known.has(c.key)).map((c) => ({ ...c, on: false }))];  // colunas novas entram ocultas
   }
   const saveCols = (cols) => store.set(COLS_STORE, JSON.stringify(cols));
+  const WIDTHS_STORE = "flp-larguras";
+  const loadWidths = () => { try { return JSON.parse(store.get(WIDTHS_STORE, "{}")) || {}; } catch { return {}; } };
+  const saveWidths = (w) => store.set(WIDTHS_STORE, JSON.stringify(w));
+
+  // Largura das colunas: arraste a borda direita do título. Duplo clique na borda volta ao automático.
+  function enableColumnResize(table, onDone) {
+    table.querySelector("thead").addEventListener("mousedown", (e) => {
+      const grip = e.target.closest(".col-resizer"); if (!grip) return;
+      e.preventDefault();
+      const ths = [...table.querySelectorAll("thead th")];
+      const widths = loadWidths();
+      // fixa as larguras atuais das outras colunas (mínimo de 90px: uma coluna vazia agora pode ter dados na próxima busca)
+      ths.forEach((th) => {
+        if (!widths[th.dataset.key]) widths[th.dataset.key] = Math.max(th.dataset.key === "vezes" ? 56 : 90, Math.round(th.getBoundingClientRect().width));
+      });
+      const th = grip.closest("th"), key = th.dataset.key, x0 = e.clientX, w0 = widths[key];
+      applyWidths(table, widths);
+      document.body.classList.add("col-resizing");
+      const move = (ev) => { widths[key] = Math.max(48, Math.round(w0 + ev.clientX - x0)); applyWidths(table, widths); };
+      const up = () => {
+        removeEventListener("mousemove", move); removeEventListener("mouseup", up);
+        document.body.classList.remove("col-resizing");
+        saveWidths(widths); onDone && onDone();
+      };
+      addEventListener("mousemove", move); addEventListener("mouseup", up);
+    });
+    table.querySelector("thead").addEventListener("dblclick", (e) => {
+      const grip = e.target.closest(".col-resizer"); if (!grip) return;
+      const widths = loadWidths(); delete widths[grip.closest("th").dataset.key]; saveWidths(widths); onDone && onDone();
+    });
+  }
+  function applyWidths(table, widths) {
+    const ths = [...table.querySelectorAll("thead th")];
+    const fixed = ths.some((th) => widths[th.dataset.key]);
+    table.classList.toggle("table-fixed", fixed);
+    let total = 0;
+    ths.forEach((th) => {
+      const w = widths[th.dataset.key];
+      th.style.width = w ? `${w}px` : "";
+      total += w || 140;  // coluna sem largura definida divide o espaço restante
+    });
+    table.style.width = fixed ? `${Math.max(total, table.parentElement.clientWidth)}px` : "";
+  }
 
   // Botão "Colunas": buscar, marcar/desmarcar, arrastar para mudar a posição, voltar ao padrão
   function columnChooser(box, getCols, setCols) {
@@ -213,7 +256,7 @@ const FLP = (() => {
           <div class="cc-list"></div>
           <div class="border-top mt-1 pt-1">
             <div class="form-check"><input class="form-check-input cc-all" type="checkbox" id="${box.id}-ccall"><label class="form-check-label small" for="${box.id}-ccall">Marcar todas</label></div>
-            <button type="button" class="btn btn-link btn-sm p-0 cc-reset"><i class="bi bi-arrow-counterclockwise"></i> Voltar ao padrão</button>
+            <button type="button" class="btn btn-link btn-sm p-0 cc-reset"><i class="bi bi-arrow-counterclockwise"></i> Voltar ao padrão (ordem e larguras)</button>
           </div></div></div>`;
     const list = box.querySelector(".cc-list"), search = box.querySelector(".cc-search"), all = box.querySelector(".cc-all");
     let dragKey = null;
@@ -233,7 +276,7 @@ const FLP = (() => {
       setCols(cols); draw();
     });
     all.addEventListener("change", () => { setCols(getCols().map((c) => ({ ...c, on: all.checked || c.key === "situacao" }))); draw(); });
-    box.querySelector(".cc-reset").addEventListener("click", () => { setCols(defaultCols()); draw(); });
+    box.querySelector(".cc-reset").addEventListener("click", () => { saveWidths({}); setCols(defaultCols()); draw(); });
     search.addEventListener("input", draw);
     search.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
     list.addEventListener("dragstart", (e) => {
@@ -350,7 +393,8 @@ const FLP = (() => {
         .some((v) => String(v || "").toLowerCase().includes(t)));
       shown = state.agrupar ? groupRows(list) : list;
       const cols = loadCols().filter((c) => c.on && (!COL_BY_KEY[c.key].grouped || state.agrupar)).map((c) => COL_BY_KEY[c.key]);
-      thead.innerHTML = `<tr>${cols.map((c) => `<th class="text-nowrap">${esc(c.head || c.label)}</th>`).join("")}</tr>`;
+      thead.innerHTML = `<tr>${cols.map((c) => `<th class="text-nowrap" data-key="${c.key}">${esc(c.head || c.label)}<span class="col-resizer" title="Arraste para ajustar a largura · duplo clique: automático"></span></th>`).join("")}</tr>`;
+      applyWidths(thead.closest("table"), loadWidths());
       tbody.innerHTML = shown.length ? shown.map((r, i) => `<tr data-i="${i}" class="sit-${situationOf(r)}">${cols.map((c) =>
           c.td(r).replace(/^<td/, `<td data-col="${c.key}"`)).join("")}</tr>`).join("")
         : `<tr><td colspan="${cols.length}" class="text-center text-body-secondary py-3">Nenhum evento com este filtro.</td></tr>`;
@@ -363,6 +407,7 @@ const FLP = (() => {
       state.agrupar = e.target.checked; store.set("flp-agrupar", state.agrupar ? "1" : "0"); draw();
     });
     columnChooser(container.querySelector(`#cc-${container.id}`), loadCols, (cols) => { saveCols(cols); draw(); });
+    enableColumnResize(container.querySelector("table.table-logs"), draw);
     let selected = null;
     tbody.addEventListener("click", (e) => {
       const tr = e.target.closest("tr[data-i]"); if (!tr) return;

@@ -79,3 +79,13 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 .cc-item.cc-dragging { opacity: .4; }
 .cc-item.cc-over-top { border-top-color: var(--bs-primary); }
 .cc-item.cc-over-bottom { border-bottom-color: var(--bs-primary); }
+.table-logs thead th { position: relative; }
+.col-resizer { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 2; }
+.col-resizer:hover, .col-resizing .col-resizer { background: var(--bs-primary); opacity: .5; }
+.col-resizing { cursor: col-resize; user-select: none; }
+.table-logs.table-fixed { table-layout: fixed; }
+.table-logs.table-fixed td { overflow: hidden; text-overflow: ellipsis; }
+.table-logs.table-fixed .cell-trunc, .table-logs.table-fixed .cell-dest { max-width: none; }
+.table-logs.table-fixed .cell-motivo { min-width: 0; }
+.table-logs.table-fixed th { overflow: hidden; text-overflow: ellipsis; }
+.table-logs tbody tr[data-i] > td:first-child { padding-left: .6rem; }
