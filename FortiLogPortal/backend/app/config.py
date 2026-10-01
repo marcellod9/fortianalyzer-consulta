@@ -49,6 +49,7 @@ class Settings:
     faz_default_adom: str = field(default_factory=lambda: os.getenv("FAZ_DEFAULT_ADOM", "root"))
     faz_max_results: int = field(default_factory=lambda: _int("FAZ_MAX_RESULTS", 1000))
     faz_search_timeout: int = field(default_factory=lambda: _int("FAZ_SEARCH_TIMEOUT", 120))
+    faz_parallel_searches: int = field(default_factory=lambda: _int("FAZ_PARALLEL_SEARCHES", 1))
 
     v1_base_url: str = field(default_factory=lambda: os.getenv("V1_BASE_URL", "https://api.xdr.trendmicro.com").rstrip("/"))
     v1_token: str = field(default_factory=lambda: os.getenv("V1_API_TOKEN", ""))

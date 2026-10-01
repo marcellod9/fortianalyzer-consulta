@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from .. import database
+from ..config import settings
 from . import explain
 from .faz_filters import BLOCK_ACTIONS, LogQuery
 from .fortianalyzer import get_client
@@ -49,7 +50,10 @@ def blocked_search(base: LogQuery, logtypes=("webfilter", "traffic", "app-ctrl",
         queries.append(LogQuery(**data))
 
     rows, total, errors, filtros = [], 0, {}, {}
-    with ThreadPoolExecutor(max_workers=len(queries) or 1) as ex:
+    # Padrão: uma busca por vez. Buscas simultâneas do mesmo admin REST geram erros
+    # intermitentes no FAZ ("sem permissão", "Invalid tid"). Ajustável em FAZ_PARALLEL_SEARCHES.
+    workers = max(1, min(settings.faz_parallel_searches, len(queries) or 1))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(run_query, q): q for q in queries}
         for fut, q in futures.items():
             filtros[q.logtype] = q.filter_expr()

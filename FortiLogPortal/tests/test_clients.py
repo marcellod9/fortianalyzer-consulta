@@ -100,3 +100,21 @@ def test_v1_sandbox_submit_parses_multistatus():
              "body": {"id": "abc-123", "url": "http://x.com"}}]
     c = VisionOneClient("https://api.xdr.trendmicro.com", "k", session=FakeSession(lambda *a: FakeResp(202, body)))
     assert c.sandbox_submit_url("http://x.com")["task_id"] == "abc-123"
+
+
+def test_faz_retries_invalid_tid(monkeypatch):
+    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
+    gets = {"n": 0}
+
+    def handler(method, url, body, kw):
+        if body["method"] == "add":
+            return FakeResp(body={"result": {"tid": 7}})
+        if body["method"] == "get":
+            gets["n"] += 1
+            if gets["n"] < 3:
+                return FakeResp(body={"error": {"code": -32005, "message": "Server error: Invalid tid 7 for fetching result."}})
+            return FakeResp(body={"result": {"percentage": 100, "data": []}})
+        return FakeResp(body={"result": {}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    assert c.search_logs("root", "dns", "a", "b")["logs"] == []
+    assert gets["n"] == 3

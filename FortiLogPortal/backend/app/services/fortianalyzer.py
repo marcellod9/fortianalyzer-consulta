@@ -116,8 +116,18 @@ class FazClient:
                 raise FazError(f"FortiAnalyzer não devolveu tid: {created}")
             try:
                 deadline = time.monotonic() + settings.faz_search_timeout
+                invalid_tid = 0
+                time.sleep(0.5)  # o FAZ pode demorar a registrar a tarefa recém-criada
                 while True:
-                    res = self.call("get", f"{base}/{tid}", apiver=3, offset=0, limit=limit) or {}
+                    try:
+                        res = self.call("get", f"{base}/{tid}", apiver=3, offset=0, limit=limit) or {}
+                    except FazError as e:
+                        # "Invalid tid ... for fetching result" (-32005): tarefa ainda não disponível
+                        if "Invalid tid" in str(e) and invalid_tid < 5 and time.monotonic() < deadline:
+                            invalid_tid += 1
+                            time.sleep(1)
+                            continue
+                        raise
                     if res.get("percentage", 0) >= 100:
                         rows = res.get("data") or []
                         return {"total": res.get("total-lines", len(rows)),
