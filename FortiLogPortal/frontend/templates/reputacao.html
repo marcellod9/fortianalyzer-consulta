@@ -43,10 +43,12 @@ document.addEventListener("DOMContentLoaded", () => {
             <b>Sandbox concluído:</b> risco ${FLP.esc(r.severidade)} · ameaças: ${FLP.esc((r.tipos_ameaca || []).join(", ") || "nenhuma")}
             · detecções: ${FLP.esc((r.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${FLP.esc(r.concluido_em)}</div>`;
           // refaz a reputação já com o resultado do Sandbox no veredito
+          box.insertAdjacentHTML("beforeend", `<div class="small text-body-secondary mb-2" id="sbUpd"><span class="spinner-border spinner-border-sm"></span> Atualizando a reputação com o resultado do Sandbox...</div>`);
           try {
             const rep = await one(indicator, type, false, document.getElementById("result"), taskId);
             FLP.exportButtons(document.getElementById("exports"), rep.result_id);
           } catch (e) { FLP.toast(e.message, "danger"); }
+          document.getElementById("sbUpd")?.remove();
           return;
         }
         if (s.erro) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(s.erro)}</div>`; return; }

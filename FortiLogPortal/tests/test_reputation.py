@@ -61,3 +61,23 @@ def test_finished_sandbox_result_drives_the_verdict():
     assert clean["reputacao"] == "Sem risco detectado (Sandbox)"
     only_submitted = consolidate("url", "https://x.com/", {"sandbox": {"task_id": "t1"}}, {})
     assert only_submitted["confianca"] == "Baixa"
+
+
+def test_sandbox_rerun_reuses_previous_sources(monkeypatch):
+    from app.services import reputation, visionone
+    real = visionone.get_client()
+    calls = {"det": 0}
+
+    class Counting:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def search_detections(self, *a, **kw):
+            calls["det"] += 1
+            return real.search_detections(*a, **kw)
+    monkeypatch.setattr(visionone, "get_client", lambda: Counting())
+    monkeypatch.setattr(reputation, "sandbox_status", lambda t: {"status": "succeeded", "resultado": {"risco": "noRisk"}})
+    reputation.lookup("http://reuso.example/a", "url")
+    assert calls["det"] == 1
+    r = reputation.lookup("http://reuso.example/a", "url", sandbox_task="t-1")
+    assert calls["det"] == 1 and "Sandbox Analysis" in r["fontes"]

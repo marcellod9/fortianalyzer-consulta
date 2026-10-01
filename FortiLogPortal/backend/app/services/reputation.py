@@ -140,19 +140,28 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         except V1Error as e:
             errors[name] = str(e)
 
-    run("suspicious_objects", lambda: {"items": _match_objects(_cached_objects(client, "so"), ioc_type, value)})
-    run("exceptions", lambda: {"items": _match_objects(_cached_objects(client, "exc"), ioc_type, value)})
-    run("detections", lambda: {"query": _query_for(ioc_type, value),
-                               "items": client.search_detections(_query_for(ioc_type, value), start, end, top=50)})
+    # Ao incluir um Sandbox concluído, reaproveita as fontes da consulta anterior (mesmo indicador):
+    # só o resultado do Sandbox é buscado de novo.
+    src_key = f"repsrc:{ioc_type}:{value}"
+    previous = database.temp_get(src_key) if sandbox_task else None
+    if previous:
+        sources.update(previous["sources"])
+        errors.update(previous["errors"])
+    else:
+        run("suspicious_objects", lambda: {"items": _match_objects(_cached_objects(client, "so"), ioc_type, value)})
+        run("exceptions", lambda: {"items": _match_objects(_cached_objects(client, "exc"), ioc_type, value)})
+        run("detections", lambda: {"query": _query_for(ioc_type, value),
+                                   "items": client.search_detections(_query_for(ioc_type, value), start, end, top=50)})
 
-    def alerts():
-        matched = []
-        for a in client.workbench_alerts(start, end, max_items=500):
-            hits = _alert_matches(a, ioc_type, value)
-            if hits:
-                matched.append({"alert": a, "hits": hits})
-        return {"items": matched}
-    run("workbench", alerts)
+        def alerts():
+            matched = []
+            for a in client.workbench_alerts(start, end, max_items=500):
+                hits = _alert_matches(a, ioc_type, value)
+                if hits:
+                    matched.append({"alert": a, "hits": hits})
+            return {"items": matched}
+        run("workbench", alerts)
+        database.temp_set(src_key, {"sources": dict(sources), "errors": dict(errors)}, ttl=1800)
 
     if use_sandbox and ioc_type == "url":
         if not settings.v1_sandbox_enabled:
