@@ -124,31 +124,165 @@ const FLP = (() => {
     return `<div class="card explain-card ${row.bloqueado ? "blocked" : ""} mb-2"><div class="card-body py-2"><dl class="row mb-0">${items}</dl></div></div>`;
   }
 
-  // ---- tabela de logs -------------------------------------------------------------------
-  const LOG_COLS = [
-    ["data_hora", "Data/hora"], ["firewall", "Firewall"], ["usuario", "Usuário"], ["ip_origem", "IP origem"],
-    ["porta_origem", "P. origem"], ["ip_destino", "IP destino"], ["porta_destino", "P. destino"], ["site", "Site"],
-    ["url", "URL"], ["aplicacao", "Aplicação"], ["categoria", "Categoria"], ["regra", "Regra"], ["politica", "Política"],
-    ["interface_entrada", "Int. entrada"], ["interface_saida", "Int. saída"], ["acao", "Ação"], ["motivo", "Motivo"],
-  ];
+  // ---- tabela de logs (visão simplificada para o N1) ----------------------------------
+  const SITUATION = {
+    bloqueado: { label: "Bloqueado", cls: "danger", icon: "bi-x-octagon-fill" },
+    falha: { label: "Falhou", cls: "warning", icon: "bi-exclamation-triangle-fill" },
+    permitido: { label: "Permitido", cls: "success", icon: "bi-check-circle-fill" },
+  };
+  const situationOf = (r) => r.situacao || (r.bloqueado ? "bloqueado" : "permitido");
+
+  function situationBadge(r) {
+    const s = SITUATION[situationOf(r)];
+    return `<span class="badge text-bg-${s.cls} badge-situacao"><i class="bi ${s.icon}"></i> ${s.label}</span>`;
+  }
+
+  function shortTime(dt) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2}:\d{2})/.exec(dt || "");
+    return m ? `${m[3]}/${m[2]} ${m[4]}` : (dt || "");
+  }
+
+  const destinationOf = (r) => r.destino || r.site || r.ip_destino || "";
+  const listDestination = (r) => r.site || r.ip_destino || destinationOf(r);  // a porta aparece na linha de baixo
+  const whoOf = (r) => r.usuario || r.ip_origem || "";
+
+  function groupRows(rows) {
+    const map = new Map();
+    rows.forEach((r) => {
+      const k = [situationOf(r), whoOf(r), destinationOf(r), r.regra, r.motivo].join("|");
+      const g = map.get(k);
+      if (g) { g.vezes += 1; g.primeiro = r.data_hora; } else map.set(k, { ...r, vezes: 1, ultimo: r.data_hora, primeiro: r.data_hora });
+    });
+    return [...map.values()];
+  }
+
+  function rowHtml(r, i, grouped) {
+    const sub = [r.aplicacao, r.servico].filter(Boolean).join(" · ");
+    const who = r.usuario
+      ? `<div class="fw-semibold">${esc(r.usuario)}</div><div class="small text-body-secondary">${esc(r.ip_origem)}</div>`
+      : `<div class="fw-semibold">${esc(r.ip_origem)}</div><div class="small text-body-secondary">sem login</div>`;
+    return `<tr data-i="${i}" class="sit-${situationOf(r)}">
+      <td>${situationBadge(r)}</td>
+      <td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>
+      ${grouped ? `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` : ""}
+      <td>${who}</td>
+      <td class="cell-dest"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
+        <div class="small text-body-secondary cell-trunc" title="${esc(sub)}">${esc(sub)}</div></td>
+      <td class="cell-motivo">${esc(r.motivo)}</td></tr>`;
+  }
 
   function renderLogTable(container, rows) {
     if (!rows.length) {
       container.innerHTML = `<div class="alert alert-secondary">Nenhum evento encontrado para os filtros informados.</div>`;
       return;
     }
-    const head = LOG_COLS.map(([, l]) => `<th>${l}</th>`).join("");
-    const body = rows.map((r, i) => `<tr data-i="${i}">${LOG_COLS.map(([k]) =>
-      k === "acao" ? `<td>${actionBadge(r)}</td>` : `<td class="cell-trunc" title="${esc(r[k])}">${esc(r[k])}</td>`).join("")}</tr>`).join("");
-    container.innerHTML = `<div class="table-responsive"><table class="table table-sm table-hover table-striped table-logs">
-      <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-    container.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => showLogModal(rows[+tr.dataset.i])));
+    const count = (s) => rows.filter((r) => situationOf(r) === s).length;
+    const n = { bloqueado: count("bloqueado"), falha: count("falha"), permitido: count("permitido") };
+    const state = { filtro: n.bloqueado ? "bloqueado" : "todos", texto: "", agrupar: store.get("flp-agrupar", "1") === "1" };
+    const chip = (k, label, cls) => `<input type="radio" class="btn-check" name="sit-${container.id}" id="sit-${container.id}-${k}" value="${k}" ${state.filtro === k ? "checked" : ""}>
+      <label class="btn btn-sm btn-outline-${cls}" for="sit-${container.id}-${k}">${label}</label>`;
+    container.innerHTML = `
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-2 log-toolbar">
+        <div class="btn-group" role="group" aria-label="Situação">
+          ${chip("todos", `Todos (${rows.length})`, "secondary")}
+          ${chip("bloqueado", `<i class="bi bi-x-octagon"></i> Bloqueados (${n.bloqueado})`, "danger")}
+          ${n.falha ? chip("falha", `<i class="bi bi-exclamation-triangle"></i> Falhas (${n.falha})`, "warning") : ""}
+          ${chip("permitido", `<i class="bi bi-check-circle"></i> Permitidos (${n.permitido})`, "success")}
+        </div>
+        <input type="search" class="form-control form-control-sm log-search" placeholder="Filtrar nesta lista (usuário, site, IP...)">
+        <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="agr-${container.id}" ${state.agrupar ? "checked" : ""}>
+          <label class="form-check-label small" for="agr-${container.id}" title="Junta eventos iguais (mesmo usuário, destino e resultado) em uma linha">Agrupar repetidos</label></div>
+        <span class="small text-body-secondary ms-auto"><i class="bi bi-mouse"></i> Dê dois cliques em um evento para ver os detalhes e o que fazer</span>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-hover table-logs align-middle mb-0"><thead></thead><tbody></tbody></table></div>
+      <div class="small text-body-secondary mt-1 log-count"></div>`;
+    const thead = container.querySelector("thead"), tbody = container.querySelector("tbody");
+    let shown = [];
+    const draw = () => {
+      const t = state.texto.toLowerCase();
+      let list = rows.filter((r) => state.filtro === "todos" || situationOf(r) === state.filtro);
+      if (t) list = list.filter((r) => [r.usuario, r.ip_origem, r.ip_destino, r.site, r.url, r.aplicacao, r.regra, r.motivo, r.categoria]
+        .some((v) => String(v || "").toLowerCase().includes(t)));
+      shown = state.agrupar ? groupRows(list) : list;
+      thead.innerHTML = `<tr><th>Situação</th><th>Quando</th>${state.agrupar ? '<th class="text-center">Vezes</th>' : ""}<th>Quem</th><th>Destino</th><th>O que aconteceu</th></tr>`;
+      tbody.innerHTML = shown.length ? shown.map((r, i) => rowHtml(r, i, state.agrupar)).join("")
+        : `<tr><td colspan="6" class="text-center text-body-secondary py-3">Nenhum evento com este filtro.</td></tr>`;
+      container.querySelector(".log-count").textContent = state.agrupar
+        ? `${shown.length} linha(s) agrupando ${list.length} evento(s)` : `${shown.length} evento(s)`;
+    };
+    container.querySelectorAll(`input[name="sit-${container.id}"]`).forEach((r) => r.addEventListener("change", () => { state.filtro = r.value; draw(); }));
+    container.querySelector(".log-search").addEventListener("input", (e) => { state.texto = e.target.value.trim(); draw(); });
+    container.querySelector(`#agr-${container.id}`).addEventListener("change", (e) => {
+      state.agrupar = e.target.checked; store.set("flp-agrupar", state.agrupar ? "1" : "0"); draw();
+    });
+    let selected = null;
+    tbody.addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+      selected?.classList.remove("table-active"); selected = tr; tr.classList.add("table-active");
+    });
+    tbody.addEventListener("dblclick", (e) => {
+      const tr = e.target.closest("tr[data-i]"); if (tr) showLogModal(shown[+tr.dataset.i]);
+    });
+    draw();
   }
 
-  function showLogModal(row) {
+  function fieldList(pairs) {
+    return `<dl class="row mb-0 detail-list">${pairs.filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `<dt class="col-12">${esc(k)}</dt><dd class="col-12">${esc(v)}</dd>`).join("") || '<dd class="col-12 text-body-secondary">-</dd>'}</dl>`;
+  }
+
+  function ticketText(r) {
+    const s = SITUATION[situationOf(r)].label;
+    return [
+      `Data/hora: ${r.data_hora}${r.vezes > 1 ? ` (${r.vezes} ocorrências desde ${r.primeiro})` : ""}`,
+      `Usuário: ${r.usuario || "(sem login)"} - IP ${r.ip_origem || "-"}`,
+      `Destino: ${destinationOf(r)}${r.url && r.url !== r.site ? ` (${r.url})` : ""}`,
+      `Porta/serviço: ${r.servico || r.porta_destino || "-"}${r.aplicacao ? ` - Aplicação: ${r.aplicacao}` : ""}`,
+      `Resultado: ${s}`,
+      `Motivo: ${r.motivo || "-"}`,
+      `Regra: ${r.regra || "-"}${r.politica ? ` - Perfil: ${r.politica}` : ""}`,
+      `Firewall: ${r.firewall || "-"}`,
+    ].join("\n");
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); ta.remove();
+    }
+    toast("Resumo copiado. Cole no chamado.", "success");
+  }
+
+  function showLogModal(r) {
     const m = document.getElementById("logModal");
-    m.querySelector(".modal-body").innerHTML = explainHtml(row) +
-      `<h6 class="mt-3">Todos os campos</h6><pre class="raw">${esc(JSON.stringify(row, null, 2))}</pre>`;
+    const sit = SITUATION[situationOf(r)];
+    const repTarget = r.site || r.ip_destino;
+    m.querySelector(".modal-title").textContent = "Detalhes do evento";
+    m.querySelector(".modal-body").innerHTML = `
+      <div class="alert alert-${sit.cls} d-flex gap-3 align-items-start mb-3">
+        <i class="bi ${sit.icon} fs-3"></i>
+        <div><div class="fs-5 fw-bold">${esc(r.explicacao?.Resultado || sit.label)}</div><div>${esc(r.motivo)}</div>
+          <div class="small mt-1">${esc(r.data_hora)}${r.vezes > 1 ? ` · ${r.vezes} vezes desde ${esc(r.primeiro)}` : ""}</div></div>
+      </div>
+      ${r.orientacao ? `<div class="card border-primary mb-3"><div class="card-body py-2">
+        <div class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer</div><div>${esc(r.orientacao)}</div></div></div>` : ""}
+      <div class="row g-2">
+        <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-person"></i> Quem</div><div class="card-body py-2">
+          ${fieldList([["Usuário", r.usuario || "(sem login)"], ["IP de origem", r.ip_origem], ["Porta de origem", r.porta_origem], ["Entrou pela interface", r.interface_entrada]])}</div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-globe"></i> Destino</div><div class="card-body py-2">
+          ${fieldList([["Site", r.site], ["URL", r.url], ["IP de destino", r.ip_destino], ["Porta / serviço", r.servico || r.porta_destino],
+                       ["Aplicação", r.aplicacao], ["Categoria", r.categoria], ["Saiu pela interface", r.interface_saida]])}</div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-bricks"></i> Firewall</div><div class="card-body py-2">
+          ${fieldList([["Firewall", r.firewall], ["Regra", r.regra], ["Perfil de segurança", r.politica], ["Ação registrada", r.acao_original], ["Tipo de log", r.tipo_log]])}</div></div></div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button class="btn btn-sm btn-primary" data-act="copy"><i class="bi bi-clipboard"></i> Copiar resumo para o chamado</button>
+        ${repTarget ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="/reputacao?q=${encodeURIComponent(repTarget)}"><i class="bi bi-shield-check"></i> Consultar reputação de ${esc(repTarget)}</a>` : ""}
+        <button class="btn btn-sm btn-outline-secondary ms-auto" data-bs-toggle="collapse" data-bs-target="#rawLog"><i class="bi bi-code"></i> Log original (para N2)</button>
+      </div>
+      <div class="collapse mt-2" id="rawLog"><pre class="raw">${esc(JSON.stringify(r.log_original || r, null, 2))}</pre></div>`;
+    m.querySelector('[data-act="copy"]').addEventListener("click", () => copyText(ticketText(r)));
     bootstrap.Modal.getOrCreateInstance(m).show();
   }
 

@@ -72,6 +72,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) { FLP.toast(e.message, "danger"); }
     finally { FLP.busy(btn, false); }
   });
+  const pre = new URLSearchParams(location.search).get("q");  // vindo do detalhe de um log
+  if (pre) { form.elements.indicator.value = pre; form.requestSubmit(); }
 });
 </script>
 {% endblock %}

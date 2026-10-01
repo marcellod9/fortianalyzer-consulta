@@ -14,7 +14,7 @@ from .fortianalyzer import get_client
 
 def _cache_key(q: LogQuery) -> str:
     raw = json.dumps(q.model_dump(mode="json"), sort_keys=True)
-    return "faz:" + hashlib.sha1(raw.encode()).hexdigest()
+    return "faz2:" + hashlib.sha1(raw.encode()).hexdigest()
 
 
 def run_query(q: LogQuery, use_cache: bool = True) -> dict:

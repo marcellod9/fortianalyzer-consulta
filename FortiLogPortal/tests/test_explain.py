@@ -36,3 +36,22 @@ def test_columns_cover_required_fields():
     for k in ("data_hora", "firewall", "ip_origem", "ip_destino", "porta_origem", "porta_destino", "usuario", "url",
               "aplicacao", "categoria", "regra", "politica", "interface_entrada", "interface_saida", "acao", "motivo"):
         assert k in keys
+
+
+def test_situation_service_and_guidance_for_n1():
+    deny = explain.normalize({"action": "deny", "policyid": 0, "srcip": "10.0.0.5", "dstip": "1.2.3.4", "dstport": 3389}, "traffic")
+    assert deny["situacao"] == "bloqueado" and deny["servico"] == "3389 (RDP - área de trabalho remota)"
+    assert "Nenhuma regra libera" in deny["orientacao"] and "10.0.0.5" in deny["orientacao"]
+    assert deny["destino"] == "1.2.3.4:3389"
+
+    slow = explain.normalize({"action": "timeout", "policyid": 5, "policyname": "LAN-WAN", "dstip": "8.8.4.4", "dstport": 443}, "traffic")
+    assert slow["situacao"] == "falha" and not slow["bloqueado"]
+    assert "não respondeu" in slow["motivo"] and "não em regra" in slow["orientacao"]
+    assert slow["explicacao"]["Resultado"] == "Permitido, mas a conexão falhou"
+
+    web = explain.normalize({"action": "blocked", "eventtype": "ftgd_blk", "catdesc": "Games", "hostname": "jogo.com"}, "webfilter")
+    assert "categoria Games" in web["orientacao"] and web["destino"] == "jogo.com"
+
+    ok = explain.normalize({"action": "accept", "policyid": 1, "hostname": "a.com"}, "traffic")
+    assert ok["situacao"] == "permitido" and "Somente bloqueios" in ok["orientacao"]
+    assert ok["log_original"]["hostname"] == "a.com"

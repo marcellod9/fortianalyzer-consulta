@@ -29,10 +29,19 @@ body { min-height: 100vh; }
 .stat-card .value { font-size: 1.9rem; font-weight: 700; }
 .stat-card .label { color: var(--bs-secondary-color); font-size: .85rem; text-transform: uppercase; letter-spacing: .4px; }
 
-.table-logs { font-size: .82rem; }
+.table-logs { font-size: .88rem; }
 .table-logs td { vertical-align: middle; }
-.table-logs tbody tr { cursor: pointer; }
+.table-logs tbody tr[data-i] { cursor: pointer; user-select: none; }
+.table-logs tbody tr.sit-bloqueado > td:first-child { box-shadow: inset 4px 0 0 var(--bs-danger); }
+.table-logs tbody tr.sit-falha > td:first-child { box-shadow: inset 4px 0 0 var(--bs-warning); }
+.table-logs .cell-dest { max-width: 320px; }
+.table-logs .cell-motivo { min-width: 260px; }
+.badge-situacao { font-size: .8rem; min-width: 92px; }
+.log-toolbar .log-search { max-width: 300px; }
 .cell-trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-dest .cell-trunc { max-width: 320px; }
+.detail-list dt { color: var(--bs-secondary-color); font-weight: 500; font-size: .78rem; }
+.detail-list dd { font-weight: 600; margin-bottom: .45rem; overflow-wrap: anywhere; }
 
 .explain-card { border-left: 5px solid var(--bs-success); }
 .explain-card.blocked { border-left-color: var(--bs-danger); }

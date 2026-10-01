@@ -21,6 +21,39 @@ ACTION_LABEL = {
 }
 
 
+# Conexões permitidas pelo firewall que terminaram com problema (não é bloqueio de regra)
+CONNECTION_PROBLEM = {
+    "timeout": "o destino não respondeu (tempo esgotado)",
+    "server-rst": "o servidor de destino recusou ou encerrou a conexão",
+}
+
+PORT_NAMES = {
+    20: "FTP", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS", 67: "DHCP", 80: "HTTP", 88: "Kerberos",
+    110: "POP3", 123: "NTP", 135: "RPC", 137: "NetBIOS", 139: "NetBIOS", 143: "IMAP", 161: "SNMP", 389: "LDAP",
+    443: "HTTPS", 445: "SMB - compartilhamento de arquivos", 465: "SMTPS", 514: "Syslog", 587: "SMTP", 636: "LDAPS",
+    853: "DNS sobre TLS", 993: "IMAPS", 995: "POP3S", 1433: "SQL Server", 1521: "Oracle", 3306: "MySQL",
+    3389: "RDP - área de trabalho remota", 5060: "SIP - telefonia", 5432: "PostgreSQL", 8080: "HTTP alternativo",
+    8443: "HTTPS alternativo",
+}
+
+
+def port_label(port) -> str:
+    try:
+        name = PORT_NAMES.get(int(port))
+    except (TypeError, ValueError):
+        return str(port or "")
+    return f"{port} ({name})" if name else str(port)
+
+
+def situation(log: dict) -> str:
+    """bloqueado | falha (permitido, mas a conexão não funcionou) | permitido."""
+    if is_blocked(log):
+        return "bloqueado"
+    if (log.get("action") or "").lower() in CONNECTION_PROBLEM:
+        return "falha"
+    return "permitido"
+
+
 def classify_action(action: str | None) -> str:
     """Allow / Deny / Block, como pedido na especificação."""
     a = (action or "").lower()
@@ -111,9 +144,56 @@ def reason(log: dict, logtype: str) -> str:
             return "Bloqueado por limite de conexões por IP."
         if blocked:
             return log.get("msg") or "Tráfego bloqueado."
-        return f"Tráfego permitido pela regra \"{policy}\"." if policy else "Tráfego permitido."
+        base = f"Tráfego permitido pela regra \"{policy}\"" if policy else "Tráfego permitido"
+        problem = CONNECTION_PROBLEM.get(action)
+        return f"{base}, mas {problem}." if problem else f"{base}."
 
     return log.get("msg") or log.get("logdesc") or ""
+
+
+def guidance(row: dict, log: dict, logtype: str) -> str:
+    """O que o atendente N1 deve fazer com este evento."""
+    action = (log.get("action") or "").lower()
+    ev = (log.get("eventtype") or "").lower()
+    cat = log.get("catdesc") or log.get("cat")
+    dest = row.get("site") or row.get("ip_destino") or "o destino"
+    if logtype == "ips":
+        return ("Possível ataque ou atividade suspeita. Não solicite liberação. Encaminhe este evento para a "
+                "equipe de Segurança e informe o usuário/equipamento de origem.")
+    if logtype == "virus":
+        return ("Arquivo malicioso detectado. Não tente contornar o bloqueio. Encaminhe para a equipe de Segurança "
+                "e peça uma verificação de antivírus no equipamento do usuário.")
+    if row.get("situacao") == "falha":
+        return ("O firewall liberou o acesso; o problema está no destino ou no caminho até ele, não em regra de "
+                "bloqueio. Confirme se o serviço está no ar e, se o problema continuar, encaminhe ao N2 de Redes.")
+    if not row.get("bloqueado"):
+        return ("O firewall permitiu este acesso. Se o usuário relata que não funciona, a causa provavelmente não é "
+                "bloqueio do firewall: marque \"Somente bloqueios\" para ver se outro acesso dele foi bloqueado, ou "
+                "verifique se o site está no ar.")
+    if logtype == "traffic" and action == "deny":
+        if str(log.get("policyid", "")) == "0":
+            return (f"Nenhuma regra libera este acesso. Se ele for necessário para o trabalho, abra chamado para a "
+                    f"equipe de Firewall pedindo liberação de {row.get('ip_origem') or 'origem'} para {dest} "
+                    f"na porta {row.get('servico') or '-'}, com a justificativa do usuário.")
+        return (f"Existe uma regra que bloqueia este acesso de propósito ({row.get('regra')}). Confirme a necessidade "
+                f"com o usuário e encaminhe para a equipe de Firewall/Segurança avaliar.")
+    if logtype in ("webfilter", "dns") and ev == "ftgd_err":
+        return ("Falha temporária na classificação do site. Peça para o usuário tentar de novo em alguns minutos; "
+                "se continuar, encaminhe ao N2.")
+    if logtype == "webfilter" and ev == "urlfilter":
+        return ("O endereço está em uma lista de bloqueio criada pela equipe de Segurança. Se o acesso for necessário, "
+                "encaminhe o pedido de liberação com justificativa.")
+    if logtype in ("webfilter", "dns") or (logtype == "traffic" and cat):
+        return (f"Site bloqueado pela política de navegação{f' (categoria {cat})' if cat else ''}. Consulte a "
+                "reputação do site; se for confiável e necessário para o trabalho, encaminhe pedido de liberação "
+                "com justificativa.")
+    if logtype == "app-ctrl":
+        return (f"A aplicação {log.get('app') or ''} é bloqueada pela política. A liberação depende de aprovação "
+                "da equipe de Segurança; encaminhe com a justificativa do usuário.").replace("  ", " ")
+    if logtype == "ssl":
+        return ("O certificado do site não é confiável ou é inválido. Pode ser problema do próprio site; se ele for "
+                "necessário, encaminhe ao N2 de Segurança.")
+    return "Acesso bloqueado pelo firewall. Encaminhe ao N2 com os dados deste evento."
 
 
 def normalize(log: dict, logtype: str) -> dict:
@@ -153,8 +233,16 @@ def normalize(log: dict, logtype: str) -> dict:
         "bloqueado": blocked,
         "motivo": reason(log, logtype),
         "tipo_log": logtype,
+        "situacao": situation(log),
+        "servico": port_label(log.get("dstport")),
     }
+    dest = site or row["ip_destino"]
+    if not site and row["porta_destino"]:
+        dest = f"{dest}:{row['porta_destino']}"
+    row["destino"] = dest
+    row["orientacao"] = guidance(row, log, logtype)
     row["explicacao"] = explain(row)
+    row["log_original"] = log
     return row
 
 
@@ -163,7 +251,7 @@ def explain(row: dict) -> dict:
     acesso = row.get("site") or row.get("url") or row.get("ip_destino") or "-"
     if row.get("porta_destino") and not row.get("site"):
         acesso = f"{acesso}:{row['porta_destino']}"
-    resultado = "Bloqueado" if row.get("bloqueado") else "Permitido"
+    resultado = {"bloqueado": "Bloqueado", "falha": "Permitido, mas a conexão falhou"}.get(row.get("situacao"), "Permitido")
     return {
         "Usuário": row.get("usuario") or f"(não autenticado) {row.get('ip_origem') or ''}".strip(),
         "Acesso": acesso,
