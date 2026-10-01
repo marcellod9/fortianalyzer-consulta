@@ -81,14 +81,18 @@ document.addEventListener("DOMContentLoaded", () => {
     `Detalhe: ${r.resumo}`,
     `Verificado: ${r.camadas.map((c) => `${c.nome}: ${!c.aplica ? "não se aplica" : c.erro ? "não consultado" : c.bloqueios ? `${c.bloqueios} bloqueio(s)` : "sem bloqueio"}`).join("; ")}`,
     `O que fazer: ${r.orientacao}`,
+    ...(r._maq ? [FLP.machineTicketLine(r._maq)] : []),
   ].join("\n");
 
   function render(r) {
     const [cls, icon] = STATUS[r.status] || STATUS.sem_eventos;
     const seen = [["IP", r.origem.ips], ["Máquina", r.origem.maquinas], ["Usuário", r.origem.usuarios]]
       .filter(([, v]) => v.length).map(([k, v]) => `${k}: <b>${v.map(esc).join(", ")}</b>`).join(" · ");
+    // máquina no Vision One: o IP, a máquina e o usuário pesquisados ou os mais vistos nos logs
+    const mq = r.maquina || {}, mqOk = !!(mq.ip || mq.nome || mq.usuario);
+    const mqLabel = [mq.nome, mq.ip, mq.usuario].filter(Boolean).join(" · ");
     diag.innerHTML = `
-      <div class="alert alert-${cls} d-flex gap-3 align-items-start mb-2">
+      <div class="alert alert-${cls} d-flex flex-wrap flex-sm-nowrap gap-3 align-items-start mb-2">
         <i class="bi ${icon} fs-2"></i>
         <div class="flex-grow-1"><div class="fs-5 fw-bold">${esc(r.titulo)}</div><div>${esc(r.resumo)}</div>
           <div class="small mt-1">${esc(r.quem)} → ${esc(r.destino || "qualquer destino")} · ${esc(r.periodo.inicio)} a ${esc(r.periodo.fim)}</div></div>
@@ -98,8 +102,13 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="card border-primary mb-3"><div class="card-body py-2">
         <div class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer</div><div>${esc(r.orientacao)}</div></div></div>
       <div class="row g-2 mb-2">${r.camadas.map(layerCard).join("")}</div>
-      ${seen ? `<div class="small text-body-secondary mb-3 d-flex flex-wrap gap-2 align-items-center"><span><i class="bi bi-pc-display"></i> Visto nos logs com ${seen}</span>
-        ${r.por_usuario ? r.origem.ips.slice(0, 3).map((ip) => `<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-ip="${esc(ip)}">Diagnosticar pelo IP ${esc(ip)}</button>`).join("") : ""}</div>` : ""}`;
+      ${seen || mqOk ? `<div class="small text-body-secondary mb-3 d-flex flex-wrap gap-2 align-items-center">${seen ? `<span><i class="bi bi-pc-display"></i> Visto nos logs com ${seen}</span>` : ""}
+        ${r.por_usuario ? r.origem.ips.slice(0, 3).map((ip) => `<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-ip="${esc(ip)}">Diagnosticar pelo IP ${esc(ip)}</button>`).join("") : ""}
+        ${mqOk ? `<button type="button" class="btn btn-sm btn-outline-primary py-0" data-act="machine" title="Agente Trend e alertas do Workbench de ${esc(mqLabel)}">
+          <span class="spinner-border spinner-border-sm spinner-overlay"></span><i class="bi bi-pc-display"></i> Ver máquina no Vision One</button>` : ""}</div>` : ""}
+      <div id="machine"></div>`;
+    diag.querySelector('[data-act="machine"]')?.addEventListener("click", (ev) =>
+      FLP.machineLookup(document.getElementById("machine"), mq, ev.currentTarget, { onResult: (d) => { r._maq = d; } }));
     // o mesmo diagnóstico pelo IP da máquina (logs sem usuário, como os do filtro DNS em algumas redes)
     diag.querySelectorAll("[data-ip]").forEach((b) => b.addEventListener("click", () => {
       form.elements.quem.value = b.dataset.ip; form.elements.quem_tipo.value = "auto"; form.requestSubmit();

@@ -23,12 +23,16 @@ o usuário do Windows que iniciou o servidor.
 2. **Diagnóstico**: informe o login de quem reclamou e o site (ex.: `facebook.com`) e clique em
    *Diagnosticar*. Confira se o resultado (bloqueado, permitido ou sem eventos) e a camada que
    bloqueou batem com o FortiAnalyzer. Teste também por IP, por MAC e por nome da máquina.
+   *Ver máquina no Vision One* mostra se o agente Trend está ativo e se há alertas abertos.
 3. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
    "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
    botão direito (filtrar/excluir) e o duplo clique (detalhes). Nos detalhes, *Consultar reputação*
    mostra o resultado do Vision One na própria janela (site e, se houver, o IP de destino), com a
    opção *Analisar no Sandbox* para sites/URLs. Em logs sem login, a coluna Origem mostra o nome da
    máquina (e os detalhes, MAC e sistema) quando o FortiGate tem a identificação de dispositivos ligada.
+   *Máquina no Vision One* procura o IP de origem (e o nome da máquina) no inventário do Vision One:
+   confira se o agente, o último contato e os alertas batem com o console (*Endpoint Inventory* e
+   *Workbench*).
 4. **Logs em tempo real**: clique em *Tempo real* (escolha 5 s, 10 s, 30 s ou 1 min). A lista
    começa com os últimos 5 minutos e os eventos novos entram no topo, destacados. Gere um acesso
    bloqueado de teste e veja se ele aparece. *Pausar* para a atualização e libera a exportação.
@@ -69,5 +73,6 @@ Mensagens comuns:
 | `/dvmdb/adom`: sem permissão | o admin REST não pode listar ADOMs/firewalls; o portal usa `FAZ_DEFAULT_ADOM` e "todos os firewalls". Confira se `FAZ_DEFAULT_ADOM` é o nome exato da ADOM liberada, ou dê *Device Manager: Read-Only* ao perfil |
 | Falha de certificado TLS | CA interna não confiável: ajuste `FAZ_VERIFY_TLS`/`V1_VERIFY_TLS` |
 | Vision One HTTP 403 | função da chave sem a permissão daquela fonte |
+| Máquina no Vision One: inventário com HTTP 403 | função da chave sem *Endpoint Inventory (View)*; os alertas continuam aparecendo |
 | Vision One HTTP 404 | `V1_BASE_URL` de outra região |
 | Tempo limite da busca excedido | período grande demais; reduza ou filtre |

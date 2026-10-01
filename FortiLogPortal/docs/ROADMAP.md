@@ -16,7 +16,8 @@
   `/api/v1/alerts`, já disponível na API do portal.
 - **Detections** e **IOC Search/Correlation** por usuário e endpoint.
 - **Reputação de arquivo/hash** (SHA-1/SHA-256) e envio de arquivo ao Sandbox.
-- **Inventário de endpoints**: agentes protegidos, status e política, sobre `/api/v1/endpoints`.
+- **Inventário de endpoints**: tela com todos os agentes (status e política) sobre `/api/v1/endpoints`.
+  A situação de uma máquina já aparece nos detalhes do evento e no Diagnóstico.
 
 ## FortiAnalyzer
 

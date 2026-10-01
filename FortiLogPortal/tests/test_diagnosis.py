@@ -49,6 +49,9 @@ def test_blocked_user_and_site(client):
     assert web["bloqueios"] > 0 and web["filtro"] == 'user~"joao.silva" and hostname~"facebook.com" and action=blocked'
     assert d["rows"] and all(x["bloqueado"] and x["usuario"] == "joao.silva" for x in d["rows"])
     assert d["origem"]["ips"] and d["orientacao"] and d["result_id"] and d["por_usuario"] is True
+    # o botão "Ver máquina no Vision One" usa o usuário pesquisado e o IP mais visto nos logs
+    assert d["maquina"] == {"ip": d["origem"]["ips"][0], "nome": next(iter(d["origem"]["maquinas"]), None),
+                            "usuario": "joao.silva"}
     assert client.get(f"/api/export/{d['result_id']}.xlsx", headers=H).content.startswith(b"PK")
     hist = client.get("/api/history", params={"type": "diagnostico"}).json()
     assert any(h["query_type"] == "diagnostico" and "joao.silva" in h["term"] for h in hist)
@@ -70,9 +73,11 @@ def test_ip_destination_skips_dns_and_finds_firewall_block(client):
     assert dns["aplica"] is False and dns["filtro"] is None
     fw = next(c for c in d["camadas"] if c["logtype"] == "traffic")
     assert fw["bloqueios"] > 0 and d["status"] == "bloqueado"
+    assert d["maquina"]["ip"] == d["origem"]["ips"][0]  # rede pesquisada: usa o IP mais visto
 
 
 def test_search_by_machine_name(client):
     d = client.post("/api/faz/diagnose", json={**PJ, "quem": "NB-ADM", "quem_tipo": "srcname"}, headers=H).json()
     assert d["rows"] and all(r["maquina"].startswith("NB-ADM") for r in d["rows"])
     assert all(m.startswith("NB-ADM") for m in d["origem"]["maquinas"])
+    assert d["maquina"]["nome"] == d["origem"]["maquinas"][0]

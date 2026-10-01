@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import correlation, dashboard, diagnosis, explain, export, reputation
+from ..services import correlation, dashboard, diagnosis, explain, export, machine, reputation
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -221,6 +221,18 @@ def v1_endpoints(request: Request):
         items = v1().endpoints()
         info.update(count=len(items))
     return items
+
+
+@router.get("/v1/machine")
+def v1_machine(request: Request, ip: str | None = Query(None, max_length=64),
+               nome: str | None = Query(None, max_length=128), usuario: str | None = Query(None, max_length=128),
+               refresh: bool = False):
+    """Situação da máquina no Vision One: agente Trend (inventário de endpoints) e alertas abertos do Workbench."""
+    term = " · ".join(v for v in (ip, nome, usuario) if v) or "-"
+    with tracked(request, "maquina", term, {"ip": ip, "nome": nome, "usuario": usuario}) as info:
+        r = machine.machine_status(ip, nome, usuario, refresh=refresh)
+        info.update(count=len(r["endpoints"]), summary=f"{r['titulo']} ({len(r['alertas'])} alerta(s) aberto(s))")
+    return r
 
 
 # ---- correlação -------------------------------------------------------------------------

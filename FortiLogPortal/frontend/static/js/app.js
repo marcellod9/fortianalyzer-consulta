@@ -475,6 +475,7 @@ const FLP = (() => {
       `Regra: ${r.regra || "-"}${r.politica ? ` - Perfil: ${r.politica}` : ""}`,
       `Firewall: ${r.firewall || "-"}`,
       ...Object.values(r._rep || {}).map((rep) => `Reputação (Vision One) de ${rep.indicador}: ${rep.reputacao} (score ${rep.risk_score}/100)`),
+      ...(r._maq ? [machineTicketLine(r._maq)] : []),
     ].join("\n");
   }
 
@@ -515,13 +516,18 @@ const FLP = (() => {
         <button class="btn btn-sm btn-primary" data-act="copy"><i class="bi bi-clipboard"></i> Copiar resumo para o chamado</button>
         ${repTargets.map((t, i) => `<button class="btn btn-sm btn-outline-primary" data-rep="${esc(t)}"><span class="spinner-border spinner-border-sm spinner-overlay"></span>
           <i class="bi bi-shield-check"></i> ${i ? `Reputação do IP ${esc(t)}` : `Consultar reputação de ${esc(t)}`}</button>`).join("")}
+        ${r.ip_origem || r.maquina ? `<button class="btn btn-sm btn-outline-primary" data-act="machine" title="Agente Trend e alertas do Workbench da máquina de origem e do usuário">
+          <span class="spinner-border spinner-border-sm spinner-overlay"></span><i class="bi bi-pc-display"></i> Máquina no Vision One</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary ms-auto" data-bs-toggle="collapse" data-bs-target="#rawLog"><i class="bi bi-code"></i> Log original (para N2)</button>
       </div>
       <div class="collapse mt-2" id="rawLog"><pre class="raw">${esc(JSON.stringify(r.log_original || r, null, 2))}</pre></div>
+      <div id="logMachine" class="mt-3"></div>
       <div id="logSandbox" class="mt-3"></div>
       <div id="logRep" class="mt-3"></div>`;
     m.querySelector('[data-act="copy"]').addEventListener("click", () => copyText(ticketText(r)));
     m.querySelectorAll("[data-rep]").forEach((b) => b.addEventListener("click", () => reputationInModal(m, r, b.dataset.rep, b)));
+    m.querySelector('[data-act="machine"]')?.addEventListener("click", (ev) => machineLookup(m.querySelector("#logMachine"),
+      { ip: r.ip_origem, nome: r.maquina, usuario: r.usuario }, ev.currentTarget, { onResult: (d) => { r._maq = d; } }));
     bootstrap.Modal.getOrCreateInstance(m).show();
   }
 
@@ -645,6 +651,95 @@ const FLP = (() => {
         ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
         <details class="mt-2"><summary class="small">Detalhes técnicos (Suspicious Objects, detecções, alertas)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
       </div></div>`;
+  }
+
+  // ---- situação da máquina no Vision One (agente Trend e alertas do Workbench) -------------------
+  const MACHINE_STATUS = {
+    alerta: ["danger", "bi-exclamation-octagon-fill"], isolada: ["danger", "bi-slash-circle-fill"],
+    atencao: ["warning", "bi-exclamation-triangle-fill"], ok: ["success", "bi-shield-fill-check"],
+    sem_agente: ["secondary", "bi-question-circle-fill"], erro: ["warning", "bi-exclamation-triangle-fill"],
+    info: ["info", "bi-info-circle-fill"],
+  };
+  const AGENT_CLS = { ativo: "success", desligado: "danger", sem_contato: "warning", desconhecido: "secondary" };
+  const SEV_CLS = { critical: "danger", high: "danger", medium: "warning", low: "secondary" };
+
+  function machineTicketLine(d) {
+    const ids = (d.alertas || []).map((a) => a.id).join(", ");
+    return `Vision One (máquina): ${d.titulo}. ${d.resumo}${ids ? ` Alertas abertos: ${ids}.` : ""}`;
+  }
+
+  function renderMachine(container, d) {
+    const [cls, icon] = MACHINE_STATUS[d.status] || MACHINE_STATUS.info;
+    const row = (k, v) => (v ? `<dt class="col-5 col-sm-4 fw-normal text-body-secondary">${esc(k)}</dt><dd class="col-7 col-sm-8 mb-1">${esc(v)}</dd>` : "");
+    const found = { ip: "pelo IP", nome: "pelo nome" };
+    const endpoint = (e) => {
+      const ag = e.agente || {};
+      return `<div class="col-lg-6"><div class="border rounded p-2 h-100">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2"><i class="bi bi-pc-display"></i><b>${esc(e.nome || e.guid)}</b>
+          <span class="badge text-bg-${AGENT_CLS[ag.estado] || "secondary"}">${esc(ag.texto)}</span>
+          ${e.isolada ? '<span class="badge text-bg-danger">Isolada da rede</span>' : ""}
+          ${e.encontrado_por?.length ? `<span class="small text-body-secondary ms-auto">encontrada ${esc(e.encontrado_por.map((k) => found[k] || k).join(" e "))}</span>` : ""}</div>
+        <dl class="row small mb-0">
+          ${row("Último contato", ag.ultimo_contato && ag.ultimo_contato + (ag.dias_sem_contato ? ` (há ${ag.dias_sem_contato} dias)` : ""))}
+          ${row("Proteção", ag.protecao)}${row("Sensor XDR", ag.sensor)}${row("Isolamento", e.isolamento)}
+          ${row("IP", e.ips.join(", "))}${row("MAC", e.macs.join(", "))}${row("Usuário na máquina", e.usuarios.join(", "))}
+          ${row("Sistema", e.sistema)}${row("Produtos Trend", e.produtos.join(", "))}${row("Política", e.politica)}
+          ${row("Componentes", e.componentes)}
+        </dl>
+        ${e.erro ? `<div class="small text-warning-emphasis mt-1"><i class="bi bi-exclamation-triangle"></i> ${esc(e.erro)}</div>` : ""}
+      </div></div>`;
+    };
+    const alertItem = (a) => `<li class="list-group-item px-2 py-1 small d-flex flex-wrap gap-2 align-items-center">
+        <span class="badge text-bg-${SEV_CLS[a.severidade] || "secondary"}">${esc(a.severidade_texto)}</span>
+        <b>${esc(a.modelo)}</b><span class="text-body-secondary">${esc([a.id, a.status, a.criado, a.motivos.join(", ")].filter(Boolean).join(" · "))}</span>
+        ${a.link ? `<a class="ms-auto" href="${esc(a.link)}" target="_blank" rel="noopener noreferrer">Abrir no Vision One <i class="bi bi-box-arrow-up-right"></i></a>` : ""}</li>`;
+    const p = d.periodo_alertas || {};
+    const errs = Object.entries(d.erros || {});
+    container.innerHTML = `
+      <div class="card mb-3"><div class="card-header py-1 small fw-semibold d-flex align-items-center gap-2">
+        <i class="bi bi-pc-display"></i> Máquina no Vision One
+        <span class="ms-auto fw-normal text-body-secondary d-none d-sm-inline">Consultado em ${esc(d.consultado_em)}</span>
+        <button type="button" class="btn btn-sm btn-link py-0 ms-auto ms-sm-0" data-act="machine-refresh" title="Consultar de novo" aria-label="Consultar de novo">
+          <span class="spinner-border spinner-border-sm spinner-overlay"></span><i class="bi bi-arrow-clockwise"></i></button></div>
+      <div class="card-body py-2">
+        <div class="alert alert-${cls} d-flex gap-2 align-items-start py-2 mb-2"><i class="bi ${icon} fs-4"></i>
+          <div><div class="fw-bold">${esc(d.titulo)}</div><div class="small">${esc(d.resumo)}</div></div></div>
+        <div class="small mb-2"><span class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer:</span> ${esc(d.orientacao)}</div>
+        ${(d.avisos || []).map((a) => `<div class="alert alert-warning small py-1 mb-2">${esc(a)}</div>`).join("")}
+        ${d.endpoints.length ? `<div class="row g-2 mb-2">${d.endpoints.map(endpoint).join("")}</div>` : ""}
+        <div class="small fw-semibold mt-1">Alertas abertos no Workbench <span class="fw-normal text-body-secondary">(${esc(`${p.inicio} a ${p.fim}`)})</span></div>
+        ${d.alertas.length ? `<ul class="list-group mt-1">${d.alertas.map(alertItem).join("")}</ul>`
+          : `<div class="small text-body-secondary">${d.erros?.alertas ? "Não consultados." : "Nenhum alerta aberto para a máquina ou o usuário."}</div>`}
+        ${d.total_encerrados ? `<details class="mt-1"><summary class="small text-body-secondary">${d.total_encerrados} alerta(s) encerrado(s) no período</summary>
+          <ul class="list-group mt-1">${d.alertas_encerrados.map(alertItem).join("")}</ul></details>` : ""}
+        ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Não foi possível consultar:</b>${errs.map(([k, v]) =>
+          `<div>${k === "inventario" ? "Inventário de endpoints" : "Alertas do Workbench"}: ${esc(v)}</div>`).join("")}</div>` : ""}
+        ${d.consulta_v1 ? `<div class="small text-body-tertiary mt-2" title="Consulta enviada ao inventário do Vision One (para o N2)">Consulta: ${esc(d.consulta_v1)}</div>` : ""}
+      </div></div>`;
+  }
+
+  // Consulta a máquina no Vision One e mostra o resultado em "box". onResult recebe cada resultado (também ao atualizar).
+  async function machineLookup(box, params, btn, { refresh = false, onResult } = {}) {
+    const token = box.dataset.token = String(Math.random());
+    if (btn) busy(btn, true);
+    if (!refresh) box.innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span> Consultando a máquina no Vision One...</div>`;
+    const qs = new URLSearchParams(Object.entries({ ...params, refresh: refresh ? "true" : "" }).filter(([, v]) => v));
+    try {
+      const d = await api(`/api/v1/machine?${qs}`);
+      if (!box.isConnected || box.dataset.token !== token) return;
+      renderMachine(box, d);
+      box.querySelector('[data-act="machine-refresh"]').addEventListener("click", (ev) =>
+        machineLookup(box, params, ev.currentTarget, { refresh: true, onResult }));
+      if (onResult) onResult(d);
+      if (!refresh) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {
+      if (box.isConnected && box.dataset.token === token) box.innerHTML = `<div class="alert alert-danger small mb-0">Vision One: ${esc(e.message)}</div>`;
+    } finally {
+      if (btn && btn.isConnected) busy(btn, false);
+      // dentro da janela do evento: o botão desabilitado perde o foco; devolve à janela para o Esc continuar fechando
+      const modal = box.closest(".modal");
+      if (modal?.classList.contains("show") && !modal.contains(document.activeElement)) modal.focus();
+    }
   }
 
   function exportButtons(container, resultId) {
@@ -868,5 +963,5 @@ const FLP = (() => {
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
   return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
-           renderLogTable, exportButtons, renderReputation, sandboxFlow, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
+           renderLogTable, exportButtons, renderReputation, sandboxFlow, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();

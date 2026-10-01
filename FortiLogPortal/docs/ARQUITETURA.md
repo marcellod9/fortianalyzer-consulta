@@ -64,6 +64,7 @@ Credenciais **não** ficam no banco.
 | GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox |
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |
 | GET | `/api/v1/endpoints` | inventário de endpoints |
+| GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |
 | POST | `/api/correlation` | `{indicator, start, end, adom}` |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
 | GET | `/api/history?type=&q=` | histórico |
@@ -77,8 +78,9 @@ hostname, policy, profile, srcintf, dstintf, action, only_blocked, limit`.
 
 - Os clientes (`fortianalyzer.py`, `visionone.py`) só falam com as APIs; regras de negócio ficam
   em `services/` separados. Um novo módulo (ex.: incidentes) é um novo serviço + rota + página.
-- `visionone.py` já expõe `workbench_alerts`, `endpoints` e Sandbox, base para Alertas,
-  Incidentes/Workbench e Inventário.
+- `visionone.py` já expõe `workbench_alerts`, `endpoints`, `search_endpoints`, `endpoint_details` e
+  Sandbox, base para Alertas, Incidentes/Workbench e Inventário. `machine.py` usa os três primeiros
+  para a situação da máquina (os alertas ficam 5 minutos em cache e são filtrados no portal).
 - `correlation.py` recebe um indicador e cruza eventos do FAZ com a reputação; a mesma estrutura
   serve para correlacionar alertas do Vision One com logs do firewall (por IP/host/usuário).
 - `reputation.lookup` aceita tipos novos (hash de arquivo) adicionando um ramo em

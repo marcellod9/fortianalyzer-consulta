@@ -94,6 +94,22 @@ def test_v1_rejects_foreign_nextlink_and_maps_errors():
         c.workbench_alerts(datetime.now(), datetime.now())
 
 
+def test_v1_endpoint_search_and_details_use_official_paths():
+    base = "https://api.xdr.trendmicro.com"
+
+    def handler(method, url, body, kw):
+        if url.endswith("/eiqs/endpoints"):
+            assert kw["headers"]["TMV1-Query"] == "ip eq '10.0.0.5' or endpointName eq 'PC-01'"
+            return FakeResp(body={"items": [{"agentGuid": "abc-123"}]})
+        assert url == f"{base}/v3.0/endpointSecurity/endpoints/abc-123"
+        return FakeResp(body={"agentGuid": "abc-123", "eppAgent": {"status": "on"}})
+    c = VisionOneClient(base, "k", session=FakeSession(handler))
+    assert c.search_endpoints("ip eq '10.0.0.5' or endpointName eq 'PC-01'") == [{"agentGuid": "abc-123"}]
+    assert c.endpoint_details("abc-123")["eppAgent"]["status"] == "on"
+    with pytest.raises(V1Error, match="inválido"):
+        c.endpoint_details("../iam/apiKeys")
+
+
 def test_v1_sandbox_submit_parses_multistatus():
     body = [{"status": 202, "headers": [{"name": "Operation-Location",
                                          "value": "https://api.xdr.trendmicro.com/v3.0/sandbox/tasks/abc-123"}],

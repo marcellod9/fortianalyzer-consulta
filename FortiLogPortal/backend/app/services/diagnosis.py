@@ -146,6 +146,15 @@ def diagnose(q: DiagnoseQuery) -> dict:
         "origem": {"usuarios": _seen(rows, "usuario"), "ips": _seen(rows, "ip_origem"), "maquinas": _seen(rows, "maquina")},
     }
     out["por_usuario"] = who.field == "user"
+    # para consultar a máquina no Vision One: o que foi pesquisado ou o mais visto nos logs. Máquina e usuário
+    # vêm dos eventos do mesmo IP, para não misturar duas máquinas.
+    ip = who.value if who.field == "srcip" and "/" not in who.value else next(iter(out["origem"]["ips"]), None)
+    same = [r for r in rows if r.get("ip_origem") == ip] if ip else rows
+    out["maquina"] = {
+        "ip": ip,
+        "nome": next(iter(_seen(same, "maquina", 1)), None) or (who.value if who.field == "srcname" else None),
+        "usuario": who.value if who.field == "user" else next(iter(_seen(same, "usuario", 1)), None),
+    }
     out.update(conclude(out, who.field, target_kind))
     if errors:
         def nome(k: str) -> str:

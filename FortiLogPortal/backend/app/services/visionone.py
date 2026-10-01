@@ -10,12 +10,15 @@ Endpoints usados (somente leitura, exceto o envio opcional ao Sandbox):
   GET  /v3.0/threatintel/suspiciousObjectExceptions lista de exceções (objetos confiáveis)
   GET  /v3.0/search/detections                      detecções no ambiente (header TMV1-Query)
   GET  /v3.0/workbench/alerts                       alertas do Workbench
-  GET  /v3.0/endpointSecurity/endpoints             inventário de endpoints (uso futuro)
+  GET  /v3.0/eiqs/endpoints                         procura a máquina no inventário (header TMV1-Query)
+  GET  /v3.0/endpointSecurity/endpoints             inventário de endpoints
+  GET  /v3.0/endpointSecurity/endpoints/{id}        situação do agente da máquina (status, último contato)
   POST /v3.0/sandbox/urls/analyze                   envia URL ao Sandbox (opcional, consome cota)
   GET  /v3.0/sandbox/tasks/{id}                     status da análise
   GET  /v3.0/sandbox/analysisResults/{id}           resultado (riskLevel, threatTypes...)
   GET  /v3.0/sandbox/analysisResults/{id}/suspiciousObjects   IOCs extraídos pelo Sandbox
 """
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -27,6 +30,7 @@ from ..config import settings
 from .telemetry import timed
 
 API = "/v3.0"
+GUID_RE = re.compile(r"[\w\-]{1,80}", re.ASCII)
 
 
 class V1Error(Exception):
@@ -137,10 +141,21 @@ class VisionOneClient:
                                        "orderBy": "createdDateTime desc"},
                                headers=headers, max_items=max_items)
 
-    # ---- Endpoints (uso futuro) ---------------------------------------------------
+    # ---- Endpoints ----------------------------------------------------------------
     def endpoints(self, max_items: int = 500) -> list[dict]:
         with timed(self.source, "endpointSecurity/endpoints"):
             return self._paged("/endpointSecurity/endpoints", params={"top": 200}, max_items=max_items)
+
+    def search_endpoints(self, query: str, max_items: int = 20) -> list[dict]:
+        """Máquinas do inventário que atendem à consulta (ex.: ip eq '10.0.0.1' or endpointName eq 'PC-01')."""
+        with timed(self.source, f"eiqs/endpoints [{query}]"):
+            return self._paged("/eiqs/endpoints", headers={"TMV1-Query": query}, max_items=max_items)
+
+    def endpoint_details(self, agent_guid: str) -> dict:
+        if not GUID_RE.fullmatch(agent_guid or ""):
+            raise V1Error("Identificador de endpoint inválido.")
+        with timed(self.source, "endpointSecurity/endpoints/{id}"):
+            return self._get(f"/endpointSecurity/endpoints/{agent_guid}")
 
     # ---- Sandbox ----------------------------------------------------------------
     def sandbox_submit_url(self, url: str) -> dict:

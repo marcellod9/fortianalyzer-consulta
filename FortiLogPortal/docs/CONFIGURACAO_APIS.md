@@ -99,7 +99,7 @@ A URL da API depende da região do tenant. `portal.xdr.trendmicro.com` correspon
    - *Search* (View) — para detecções;
    - *Workbench* (View) — para alertas;
    - *Sandbox Analysis* (View e Submit) — só se for usar a análise de URL;
-   - *Endpoint Inventory* (View) — opcional, para a evolução de inventário.
+   - *Endpoint Inventory* (View) — para a *Máquina no Vision One* (agente Trend da máquina de origem).
 2. **Administration > API Keys > Add API Key**: escolha a função acima e uma validade.
 3. Copie a chave para `V1_API_TOKEN`.
 
@@ -114,8 +114,10 @@ responder HTTP 403, a tela de reputação mostra qual fonte falhou; ajuste a fun
 | `GET /v3.0/threatintel/suspiciousObjects` | IOC marcados como suspeitos (risco, ação, validade) |
 | `GET /v3.0/threatintel/suspiciousObjectExceptions` | objetos marcados como confiáveis |
 | `GET /v3.0/search/detections` + header `TMV1-Query` | detecções do indicador no ambiente |
-| `GET /v3.0/workbench/alerts` | alertas que citam o indicador; base de *Active/Critical/Open Alerts* |
-| `GET /v3.0/endpointSecurity/endpoints` | inventário de endpoints (`/api/v1/endpoints`, uso futuro) |
+| `GET /v3.0/workbench/alerts` | alertas que citam o indicador e alertas da máquina ou do usuário (entidades do *impact scope*) |
+| `GET /v3.0/eiqs/endpoints` + header `TMV1-Query` | procura a máquina pelo IP ou nome (`ip eq '10.0.0.1' or endpointName eq 'PC-01'`) |
+| `GET /v3.0/endpointSecurity/endpoints/{id}` | situação do agente: ligado, último contato, sensor XDR, isolamento |
+| `GET /v3.0/endpointSecurity/endpoints` | inventário de endpoints (`/api/v1/endpoints`) |
 | `POST /v3.0/sandbox/urls/analyze`, `GET /v3.0/sandbox/tasks/{id}`, `GET /v3.0/sandbox/analysisResults/{id}` | análise de URL no Sandbox (opcional) |
 
 ### Como a reputação é calculada
