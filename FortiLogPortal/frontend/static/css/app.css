@@ -59,3 +59,15 @@ body { min-height: 100vh; }
 .loading .spinner-overlay { display: inline-block; }
 pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(--bs-tertiary-bg); padding: .75rem; border-radius: .5rem; }
 .chart-box { position: relative; height: 220px; }
+
+.dp-menu { width: 380px; }
+.dp-list { max-height: 360px; overflow: auto; }
+.dp-item { padding: .15rem 0 .15rem 1.6em; }
+.dp-item label { cursor: pointer; }
+.fb-menu { width: 260px; }
+.fb-list { max-height: 320px; overflow: auto; }
+.fb-chip { width: auto; }
+.fb-chip .fb-val { max-width: 200px; min-width: 120px; }
+.fb-chip .fb-op { min-width: 2.6rem; font-weight: 700; }
+.fb-chip.fb-neg .input-group-text, .fb-chip.fb-neg .fb-op { color: var(--bs-danger); border-color: var(--bs-danger); }
+.flp-ctx { position: fixed; z-index: 2000; display: block; }

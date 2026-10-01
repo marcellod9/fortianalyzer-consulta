@@ -162,23 +162,68 @@ const FLP = (() => {
       ? `<div class="fw-semibold">${esc(r.usuario)}</div><div class="small text-body-secondary">${esc(r.ip_origem)}</div>`
       : `<div class="fw-semibold">${esc(r.ip_origem)}</div><div class="small text-body-secondary">sem login</div>`;
     return `<tr data-i="${i}" class="sit-${situationOf(r)}">
-      <td>${situationBadge(r)}</td>
+      <td data-col="situacao">${situationBadge(r)}</td>
       <td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>
       ${grouped ? `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` : ""}
-      <td>${who}</td>
-      <td class="cell-dest"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
+      <td data-col="quem">${who}</td>
+      <td class="cell-dest" data-col="destino"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
         <div class="small text-body-secondary cell-trunc" title="${esc(sub)}">${esc(sub)}</div></td>
-      <td class="cell-motivo">${esc(r.motivo)}</td></tr>`;
+      <td class="cell-motivo" data-col="motivo">${esc(r.motivo)}</td></tr>`;
   }
 
-  function renderLogTable(container, rows) {
+  // Valores de cada coluna que podem virar filtro (botão direito)
+  function cellFilters(r, col) {
+    const lg = r.log_original || {};
+    const out = [];
+    const push = (field, value, text) => { if (value !== undefined && value !== null && value !== "") out.push({ field, value: String(value), text: text ?? value }); };
+    if (col === "quem") { push("user", r.usuario); push("srcip", r.ip_origem); }
+    if (col === "destino") {
+      push("hostname", r.site); push("dstip", r.ip_destino); push("dstport", r.porta_destino, r.servico || r.porta_destino);
+      push("app", r.aplicacao);
+    }
+    if (col === "situacao") push("action", lg.action || r.acao_original);
+    if (col === "motivo") { push("policy", lg.policyid ?? "", r.regra); push("category", r.categoria); }
+    return out;
+  }
+
+  let ctxMenu = null;
+  function showContextMenu(ev, items, onFilter) {
+    ctxMenu?.remove();
+    if (!items.length) return;
+    ev.preventDefault();
+    ctxMenu = document.createElement("div");
+    ctxMenu.className = "dropdown-menu show shadow flp-ctx";
+    ctxMenu.innerHTML = items.map((it, i) => `
+      <button type="button" class="dropdown-item small" data-i="${i}" data-op="="><i class="bi bi-zoom-in text-success"></i> Filtrar <b>${esc(FILTER_LABEL[it.field])}</b> = ${esc(it.text)}</button>
+      <button type="button" class="dropdown-item small" data-i="${i}" data-op="!="><i class="bi bi-zoom-out text-danger"></i> Excluir <b>${esc(FILTER_LABEL[it.field])}</b> ≠ ${esc(it.text)}</button>`)
+      .join('<div class="dropdown-divider my-1"></div>');
+    document.body.appendChild(ctxMenu);
+    const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+    ctxMenu.style.left = `${Math.min(ev.clientX, innerWidth - w - 8)}px`;
+    ctxMenu.style.top = `${Math.min(ev.clientY, innerHeight - h - 8)}px`;
+    const menu = ctxMenu;
+    menu.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-i]"); if (!b) return;
+      const it = items[+b.dataset.i];
+      menu.remove(); if (ctxMenu === menu) ctxMenu = null;
+      onFilter(it.field, b.dataset.op, it.value);
+    });
+  }
+  const closeCtx = (e) => { if (ctxMenu && !(e && e.target instanceof Node && ctxMenu.contains(e.target))) { ctxMenu.remove(); ctxMenu = null; } };
+  ["click", "scroll", "resize"].forEach((t) => addEventListener(t, closeCtx, true));
+  addEventListener("keydown", (e) => { if (e.key === "Escape") { ctxMenu?.remove(); ctxMenu = null; } });
+
+  function renderLogTable(container, rows, opts = {}) {
     if (!rows.length) {
       container.innerHTML = `<div class="alert alert-secondary">Nenhum evento encontrado para os filtros informados.</div>`;
       return;
     }
     const count = (s) => rows.filter((r) => situationOf(r) === s).length;
     const n = { bloqueado: count("bloqueado"), falha: count("falha"), permitido: count("permitido") };
-    const state = { filtro: n.bloqueado ? "bloqueado" : "todos", texto: "", agrupar: store.get("flp-agrupar", "1") === "1" };
+    // mantém a escolha do usuário entre uma pesquisa e outra (ex.: filtro aplicado pelo botão direito)
+    let filtro = container.dataset.sit || (n.bloqueado ? "bloqueado" : "todos");
+    if (filtro !== "todos" && !n[filtro]) filtro = "todos";
+    const state = { filtro, texto: "", agrupar: store.get("flp-agrupar", "1") === "1" };
     const chip = (k, label, cls) => `<input type="radio" class="btn-check" name="sit-${container.id}" id="sit-${container.id}-${k}" value="${k}" ${state.filtro === k ? "checked" : ""}>
       <label class="btn btn-sm btn-outline-${cls}" for="sit-${container.id}-${k}">${label}</label>`;
     container.innerHTML = `
@@ -192,7 +237,7 @@ const FLP = (() => {
         <input type="search" class="form-control form-control-sm log-search" placeholder="Filtrar nesta lista (usuário, site, IP...)">
         <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="agr-${container.id}" ${state.agrupar ? "checked" : ""}>
           <label class="form-check-label small" for="agr-${container.id}" title="Junta eventos iguais (mesmo usuário, destino e resultado) em uma linha">Agrupar repetidos</label></div>
-        <span class="small text-body-secondary ms-auto"><i class="bi bi-mouse"></i> Dê dois cliques em um evento para ver os detalhes e o que fazer</span>
+        <span class="small text-body-secondary ms-auto"><i class="bi bi-mouse"></i> Dois cliques: detalhes e o que fazer${opts.onFilter ? " · Botão direito: filtrar ou excluir o valor" : ""}</span>
       </div>
       <div class="table-responsive"><table class="table table-sm table-hover table-logs align-middle mb-0"><thead></thead><tbody></tbody></table></div>
       <div class="small text-body-secondary mt-1 log-count"></div>`;
@@ -210,7 +255,7 @@ const FLP = (() => {
       container.querySelector(".log-count").textContent = state.agrupar
         ? `${shown.length} linha(s) agrupando ${list.length} evento(s)` : `${shown.length} evento(s)`;
     };
-    container.querySelectorAll(`input[name="sit-${container.id}"]`).forEach((r) => r.addEventListener("change", () => { state.filtro = r.value; draw(); }));
+    container.querySelectorAll(`input[name="sit-${container.id}"]`).forEach((r) => r.addEventListener("change", () => { state.filtro = container.dataset.sit = r.value; draw(); }));
     container.querySelector(".log-search").addEventListener("input", (e) => { state.texto = e.target.value.trim(); draw(); });
     container.querySelector(`#agr-${container.id}`).addEventListener("change", (e) => {
       state.agrupar = e.target.checked; store.set("flp-agrupar", state.agrupar ? "1" : "0"); draw();
@@ -219,6 +264,12 @@ const FLP = (() => {
     tbody.addEventListener("click", (e) => {
       const tr = e.target.closest("tr[data-i]"); if (!tr) return;
       selected?.classList.remove("table-active"); selected = tr; tr.classList.add("table-active");
+    });
+    if (opts.onFilter) tbody.addEventListener("contextmenu", (e) => {
+      const td = e.target.closest("td[data-col]"), tr = e.target.closest("tr[data-i]");
+      if (!td || !tr) return;
+      selected?.classList.remove("table-active"); selected = tr; tr.classList.add("table-active");
+      showContextMenu(e, cellFilters(shown[+tr.dataset.i], td.dataset.col), opts.onFilter);
     });
     tbody.addEventListener("dblclick", (e) => {
       const tr = e.target.closest("tr[data-i]"); if (tr) showLogModal(shown[+tr.dataset.i]);
@@ -300,30 +351,199 @@ const FLP = (() => {
       if (k === "devices") { (out.devices = out.devices || []).push(v); return; }
       out[k] = v;
     });
-    form.querySelectorAll("input[type=checkbox]").forEach((c) => { out[c.name] = c.checked; });
+    form.querySelectorAll("input[type=checkbox][name]").forEach((c) => { out[c.name] = c.checked; });
     ["srcport", "dstport", "limit"].forEach((k) => { if (out[k] !== undefined) out[k] = parseInt(out[k], 10); });
     return out;
   }
 
-  async function loadAdomsAndDevices(adomSel, devSel, defaultAdom) {
+  // ---- seletor de firewalls (como o do FortiAnalyzer) --------------------------------
+  // Nenhum marcado = todos. Cluster HA aparece como um item, com os membros embaixo.
+  function devicePicker(box, adomSel) {
+    box.innerHTML = `<div class="dropdown device-picker">
+        <button type="button" class="btn btn-sm btn-outline-secondary text-body dropdown-toggle w-100 text-start text-truncate" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+          <i class="bi bi-hdd-network"></i> <span class="dp-label">Todos os firewalls</span></button>
+        <div class="dropdown-menu p-2 dp-menu">
+          <input type="search" class="form-control form-control-sm mb-2 dp-search" placeholder="Buscar firewall (nome ou IP)">
+          <div class="form-check border-bottom pb-1 mb-1"><input class="form-check-input dp-all" type="checkbox" id="${box.id}-all" checked>
+            <label class="form-check-label fw-semibold" for="${box.id}-all">Todos os firewalls <span class="dp-total text-body-secondary"></span></label></div>
+          <div class="dp-list"></div>
+          <div class="d-flex gap-2 align-items-center border-top pt-2 mt-1">
+            <span class="small text-body-secondary dp-count"></span>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto dp-clear">Limpar</button>
+            <button type="button" class="btn btn-sm btn-primary dp-ok">OK</button></div>
+        </div></div>
+      <div class="dp-fallback d-none"><input class="form-control form-control-sm" name="devname" placeholder="Nome do firewall (ex.: fw-br-df-reg-bsb213)">
+        <div class="form-text">Lista indisponível: o administrador REST precisa de Device Manager (leitura) no FortiAnalyzer.</div></div>
+      <div class="dp-hidden"></div>`;
+    const $ = (sel) => box.querySelector(sel);
+    const toggleBtn = $("[data-bs-toggle]");
+    let devs = [], selected = new Set();
+    const key = () => `flp-devices-${adomSel.value}`;
+
+    function apply() {
+      $(".dp-hidden").innerHTML = [...selected].map((sn) => `<input type="hidden" name="devices" value="${esc(sn)}">`).join("");
+      const names = devs.filter((d) => selected.has(d.sn)).map((d) => d.name);
+      $(".dp-label").textContent = !names.length ? "Todos os firewalls" : names.length === 1 ? names[0] : `${names.length} firewalls`;
+      toggleBtn.title = names.join(", ") || "Todos os firewalls";
+      $(".dp-all").checked = !selected.size;
+      $(".dp-count").textContent = selected.size ? `${selected.size} selecionado(s)` : "";
+      store.set(key(), JSON.stringify([...selected]));
+    }
+    function draw() {
+      const t = $(".dp-search").value.trim().toLowerCase();
+      const match = (d) => !t || [d.name, d.ip, d.platform, ...(d.ha_members || []).map((m) => m.name)].some((v) => String(v || "").toLowerCase().includes(t));
+      const list = devs.filter(match);
+      $(".dp-list").innerHTML = list.map((d) => {
+        const ha = d.ha_members && d.ha_members.length;
+        const id = `${box.id}-d-${d.sn}`;
+        return `<div class="form-check dp-item"><input class="form-check-input" type="checkbox" id="${esc(id)}" value="${esc(d.sn)}" ${selected.has(d.sn) ? "checked" : ""}>
+          <label class="form-check-label" for="${esc(id)}"><i class="bi ${ha ? "bi-diagram-3" : "bi-hdd"}"></i> ${esc(d.name)}
+          <span class="small text-body-secondary">${esc([ha ? "cluster HA" : "", d.ip].filter(Boolean).join(" · "))}</span></label>
+          ${ha ? d.ha_members.map((m) => `<div class="small text-body-secondary ps-3"><i class="bi bi-hdd"></i> [ ${esc(m.name || m.sn)} ]${m.role ? ` ${esc(m.role)}` : ""}</div>`).join("") : ""}</div>`;
+      }).join("") || `<div class="small text-body-secondary p-2">Nenhum firewall encontrado.</div>`;
+    }
+    $(".dp-list").addEventListener("change", (e) => {
+      if (e.target.checked) selected.add(e.target.value); else selected.delete(e.target.value);
+      apply();
+    });
+    $(".dp-all").addEventListener("change", () => { selected.clear(); apply(); draw(); });
+    $(".dp-clear").addEventListener("click", () => { selected.clear(); apply(); draw(); });
+    $(".dp-ok").addEventListener("click", () => bootstrap.Dropdown.getOrCreateInstance(toggleBtn).hide());
+    $(".dp-search").addEventListener("input", draw);
+    $(".dp-search").addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    toggleBtn.addEventListener("shown.bs.dropdown", () => $(".dp-search").focus());
+
+    async function load() {
+      try { devs = await api(`/api/faz/adoms/${encodeURIComponent(adomSel.value)}/devices`); } catch { devs = []; }
+      $(".device-picker").classList.toggle("d-none", !devs.length);
+      $(".dp-fallback").classList.toggle("d-none", !!devs.length);
+      $(".dp-total").textContent = devs.length ? `(${devs.length})` : "";
+      let saved = [];
+      try { saved = JSON.parse(store.get(key(), "[]")); } catch { /* ignora */ }
+      selected = new Set(saved.filter((sn) => devs.some((d) => d.sn === sn)));
+      apply(); draw();
+    }
+    adomSel.addEventListener("change", load);
+    return { load, names: () => devs.filter((d) => selected.has(d.sn)).map((d) => d.name) };
+  }
+
+  async function loadAdomsAndDevices(adomSel, devBox, defaultAdom) {
     try {
       const adoms = await api("/api/faz/adoms");
       adomSel.innerHTML = adoms.map((a) => `<option value="${esc(a.name)}" ${a.name === defaultAdom ? "selected" : ""}>${esc(a.name)}</option>`).join("");
     } catch (e) {
       adomSel.innerHTML = `<option value="${esc(defaultAdom)}">${esc(defaultAdom)}</option>`;
-      toast("FortiAnalyzer: " + e.message, "warning");
     }
-    const loadDevs = async () => {
-      if (!devSel) return;
-      try {
-        const devs = await api(`/api/faz/adoms/${encodeURIComponent(adomSel.value)}/devices`);
-        devSel.innerHTML = `<option value="">Todos os firewalls</option>` +
-          devs.map((d) => `<option value="${esc(d.sn || d.name)}">${esc(d.name)}${d.ip ? " (" + esc(d.ip) + ")" : ""}</option>`).join("");
-      } catch (e) { devSel.innerHTML = `<option value="">Todos os firewalls</option>`; }
-    };
-    adomSel.addEventListener("change", loadDevs);
-    await loadDevs();
+    if (!adomSel.value) adomSel.innerHTML = `<option value="${esc(defaultAdom)}">${esc(defaultAdom)}</option>`;
+    if (!devBox) return null;
+    const picker = devicePicker(devBox, adomSel);
+    await picker.load();
+    return picker;
   }
+
+  // ---- filtros adicionados pelo usuário ("Adicionar filtro", como no FortiAnalyzer) --------
+  const FILTERS = [
+    ["srcip", "IP de origem", "10.55.10.57 ou 10.55.0.0/16"], ["user", "Usuário", "ALUNOS.MACEIO"],
+    ["dstip", "IP de destino", "8.8.8.8"], ["hostname", "Site / domínio", "microsoft.com"],
+    ["dstport", "Porta de destino", "443"], ["service", "Serviço", "HTTPS"], ["app", "Aplicação", "YouTube"],
+    ["action", "Ação", "deny, accept, blocked..."], ["policy", "Regra (nº ou nome)", "14"],
+    ["url", "URL (trecho)", "/login"], ["category", "Categoria do site", "Games"], ["profile", "Perfil de segurança", "WebFilter"],
+    ["srcport", "Porta de origem", "50000"], ["srcintf", "Interface de entrada", "Rede_Adm"], ["dstintf", "Interface de saída", "Wan01"],
+  ];
+  const FILTER_LABEL = Object.fromEntries(FILTERS.map(([k, l]) => [k, l]));
+  const EXACT = new Set(["srcip", "dstip", "dstport", "srcport", "action", "policy"]);
+  const OP_LABEL = { "=": "=", "!=": "≠", "~": "contém" };
+
+  function filterBuilder(box, onChange) {
+    box.innerHTML = `<div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="dropdown">
+          <button type="button" class="btn btn-sm btn-secondary rounded-pill" data-bs-toggle="dropdown" data-bs-auto-close="outside"><i class="bi bi-plus-lg"></i> Adicionar filtro</button>
+          <div class="dropdown-menu p-2 fb-menu"><input type="search" class="form-control form-control-sm mb-1 fb-search" placeholder="Escolha ou digite o filtro">
+            <div class="fb-list"></div></div>
+        </div>
+        <div class="fb-chips d-flex flex-wrap gap-2"></div>
+      </div>`;
+    const chips = box.querySelector(".fb-chips"), list = box.querySelector(".fb-list"), search = box.querySelector(".fb-search");
+    const toggle = box.querySelector("[data-bs-toggle]");
+    const drawMenu = () => {
+      const t = search.value.trim().toLowerCase();
+      const items = FILTERS.filter(([k, l]) => !t || l.toLowerCase().includes(t));
+      list.innerHTML = items.map(([k, l]) => `<button type="button" class="dropdown-item small" data-k="${k}">${esc(l)}</button>`).join("")
+        || `<div class="small text-body-secondary px-2">Nenhum filtro com esse nome.</div>`;
+    };
+    function add(field, op, value, focus = true) {
+      const chip = document.createElement("div");
+      chip.className = "fb-chip input-group input-group-sm";
+      chip.dataset.field = field;
+      chip.innerHTML = `<span class="input-group-text fw-semibold">${esc(FILTER_LABEL[field] || field)}</span>
+        <button type="button" class="btn btn-outline-secondary fb-op" title="Clique para trocar: igual / diferente${EXACT.has(field) ? "" : " / contém"}"></button>
+        <input class="form-control fb-val" value="${esc(value || "")}" placeholder="${esc((FILTERS.find(([k]) => k === field) || [])[2] || "")}">
+        <button type="button" class="btn btn-outline-secondary fb-del" title="Remover filtro"><i class="bi bi-x-lg"></i></button>`;
+      const opBtn = chip.querySelector(".fb-op");
+      const setOp = (o) => { chip.dataset.op = o; opBtn.textContent = OP_LABEL[o]; chip.classList.toggle("fb-neg", o === "!="); };
+      setOp(op || (EXACT.has(field) ? "=" : "~"));
+      opBtn.addEventListener("click", () => {
+        const ops = EXACT.has(field) ? ["=", "!="] : ["~", "=", "!="];
+        setOp(ops[(ops.indexOf(chip.dataset.op) + 1) % ops.length]);
+      });
+      chip.querySelector(".fb-del").addEventListener("click", () => { chip.remove(); onChange && onChange(); });
+      chip.querySelector(".fb-val").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onChange && onChange(); } });
+      chips.appendChild(chip);
+      if (focus) chip.querySelector(".fb-val").focus();
+      return chip;
+    }
+    list.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-k]"); if (!b) return;
+      bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+      search.value = ""; drawMenu();
+      add(b.dataset.k);
+    });
+    search.addEventListener("input", drawMenu);
+    search.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      list.querySelector("[data-k]")?.click();
+    });
+    toggle.addEventListener("shown.bs.dropdown", () => search.focus());
+    drawMenu();
+    return {
+      add,
+      get: () => [...chips.querySelectorAll(".fb-chip")].map((c) => ({ field: c.dataset.field, op: c.dataset.op, value: c.querySelector(".fb-val").value.trim() }))
+        .filter((f) => f.value),
+      clear: () => { chips.innerHTML = ""; },
+      has: (field, op, value) => [...chips.querySelectorAll(".fb-chip")].some((c) => c.dataset.field === field && c.dataset.op === op && c.querySelector(".fb-val").value.trim() === String(value)),
+    };
+  }
+
+  // ---- período relativo ("Últimos 5 minutos"), recalculado a cada pesquisa ------------------
+  function relativePeriod(sel, startEl, endEl, customBox, lastN) {
+    // valor do <option>: minutos fixos ("60"), "n:<minutos por unidade>" (últimos N ...) ou "0" (personalizado)
+    const UNIT = { 1: "minutos", 60: "horas", 1440: "dias" };
+    const minutes = () => {
+      if (sel.value.startsWith("n:")) return Math.max(1, +lastN.input.value || 1) * +sel.value.slice(2);
+      return +sel.value;
+    };
+    const sync = () => {
+      const isN = sel.value.startsWith("n:");
+      lastN?.box.classList.toggle("d-none", !isN);
+      if (isN && lastN) lastN.label.textContent = `Quantos ${UNIT[sel.value.slice(2)]}?`;
+      const mins = minutes();
+      customBox.classList.toggle("d-none", mins !== 0);
+      if (mins) {
+        const end = new Date();
+        startEl.value = toLocalInput(new Date(end.getTime() - mins * 60000));
+        endEl.value = toLocalInput(end);
+      } else setDefaultPeriod(startEl, endEl, 1);
+      store.set("flp-period", sel.value);
+    };
+    const saved = store.get("flp-period", "");
+    if (saved && [...sel.options].some((o) => o.value === saved)) sel.value = saved;
+    sel.addEventListener("change", sync);
+    lastN?.input.addEventListener("input", sync);
+    sync();
+    return { refresh: sync };
+  }
+
 
   function initQuickPeriods() {
     document.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => {
@@ -337,5 +557,5 @@ const FLP = (() => {
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
   return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
-           renderLogTable, exportButtons, formData, loadAdomsAndDevices, store };
+           renderLogTable, exportButtons, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();

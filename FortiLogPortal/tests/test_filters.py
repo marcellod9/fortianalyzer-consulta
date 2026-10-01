@@ -46,3 +46,30 @@ def test_period_must_be_ordered_and_limit_capped():
     with pytest.raises(ValidationError):
         LogQuery(start=P["end"], end=P["start"])
     assert LogQuery(limit=999999, **P).limit == 1000
+
+
+def test_devname_app_and_category_filters():
+    from datetime import datetime
+    from app.services.faz_filters import LogQuery
+    q = LogQuery(start=datetime(2026, 10, 1, 10), end=datetime(2026, 10, 1, 11), devname="fw-br-al-maceio055",
+                 app="YouTube", category="Games", logtype="webfilter")
+    assert q.filter_expr() == 'devname~"fw-br-al-maceio055" and app~"YouTube" and catdesc~"Games"'
+
+
+def test_added_filters_include_and_exclude():
+    from datetime import datetime
+    import pytest
+    from app.services.faz_filters import LogQuery
+    q = LogQuery(start=datetime(2026, 10, 1, 10), end=datetime(2026, 10, 1, 11), logtype="traffic", filters=[
+        {"field": "user", "op": "=", "value": "ALUNOS.MACEIO"},
+        {"field": "srcip", "op": "!=", "value": "10.55.10.57"},
+        {"field": "dstport", "op": "~", "value": "443"},
+        {"field": "policy", "op": "!=", "value": "14"},
+        {"field": "hostname", "op": "~", "value": "microsoft"},
+    ])
+    assert q.filter_expr() == ('user="ALUNOS.MACEIO" and srcip!=10.55.10.57 and dstport=443 and policyid!=14 '
+                               'and hostname~"microsoft"')
+    for bad in ({"field": "user", "value": 'a" or 1=1'}, {"field": "srcip", "value": "x"}, {"field": "evil", "value": "1"},
+                {"field": "user", "op": "or", "value": "a"}):
+        with pytest.raises(Exception):
+            LogQuery(start=datetime(2026, 10, 1, 10), end=datetime(2026, 10, 1, 11), filters=[bad])

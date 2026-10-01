@@ -3,43 +3,38 @@
 {% block heading %}<i class="bi bi-list-ul"></i> Consulta de logs (FortiAnalyzer){% endblock %}
 {% block content %}
 <form id="form" class="card card-body mb-3" autocomplete="off">
-  <div class="row g-2">
-    <div class="col-md-3"><label class="form-label small">Usuário (login)</label>
-      <input class="form-control form-control-sm" name="user" placeholder="ex.: marcello.sousa"></div>
-    <div class="col-md-3"><label class="form-label small">IP do computador</label>
-      <input class="form-control form-control-sm" name="srcip" placeholder="ex.: 10.213.10.66"></div>
-    <div class="col-md-3"><label class="form-label small">Site acessado</label>
-      <input class="form-control form-control-sm" name="hostname" placeholder="ex.: www.exemplo.com.br"></div>
-    <div class="col-md-3"><label class="form-label small">Tipo de log</label>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Período</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="5">Últimos 5 minutos</option><option value="30">Últimos 30 minutos</option>
+        <option value="60" selected>Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="720">Últimas 12 horas</option><option value="1440">Último 1 dia</option>
+        <option value="10080">Últimos 7 dias</option>
+        <option value="n:1">Últimos N minutos...</option><option value="n:60">Últimas N horas...</option>
+        <option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="10" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Tipo de log</label>
       <select class="form-select form-select-sm" name="logtype">{% for k, v in logtypes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
-    {% include "_period.html" %}
-    <div class="col-md-auto d-flex align-items-end"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="only_blocked" id="ob"><label class="form-check-label small" for="ob">Somente bloqueios</label></div></div>
+    <div class="col-auto"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="only_blocked" id="ob"><label class="form-check-label small" for="ob">Somente bloqueios</label></div></div>
+    <div class="col-auto ms-lg-auto d-flex gap-2">
+      <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Pesquisar</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="clear">Limpar filtros</button>
+      <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM e limite de linhas"><i class="bi bi-gear"></i></a>
+    </div>
   </div>
-  <div class="mt-2"><a class="small" data-bs-toggle="collapse" href="#advanced" role="button"><i class="bi bi-sliders"></i> Mais filtros (N2)</a></div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
   <div class="collapse" id="advanced"><div class="row g-2 mt-1">
     <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
-    <div class="col-md-3"><label class="form-label small">Equipamento (firewall)</label><select class="form-select form-select-sm" name="devices" id="devices"><option value="">Todos os firewalls</option></select></div>
-    <div class="col-md-3"><label class="form-label small">Ação</label>
-      <select class="form-select form-select-sm" name="action">
-        <option value="">Qualquer</option><option value="accept">accept (permitido)</option><option value="deny">deny (negado)</option>
-        <option value="blocked">blocked (filtro web)</option><option value="passthrough">passthrough (filtro web)</option>
-        <option value="block">block (aplicação/DNS)</option><option value="pass">pass (aplicação/DNS)</option>
-        <option value="dropped">dropped (IPS)</option><option value="close">close</option><option value="timeout">timeout</option>
-      </select></div>
-    <div class="col-md-1"><label class="form-label small">Limite</label><input type="number" class="form-control form-control-sm" name="limit" value="500" min="1" max="{{ max_results }}"></div>
-    <div class="col-12"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="dstip" placeholder="IP/rede de destino"></div>
-    <div class="col-md-3"><input type="number" class="form-control form-control-sm" name="srcport" placeholder="Porta de origem" min="1" max="65535"></div>
-    <div class="col-md-3"><input type="number" class="form-control form-control-sm" name="dstport" placeholder="Porta de destino" min="1" max="65535"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="url" placeholder="URL (trecho)"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="policy" placeholder="Regra (nº ou nome)"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="profile" placeholder="Política / perfil de segurança"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="srcintf" placeholder="Interface de entrada"></div>
-    <div class="col-md-3"><input class="form-control form-control-sm" name="dstintf" placeholder="Interface de saída"></div>
+    <div class="col-md-2"><label class="form-label small">Limite de linhas</label><input type="number" class="form-control form-control-sm" name="limit" value="500" min="1" max="{{ max_results }}"></div>
   </div></div>
-  <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
-    <button class="btn btn-primary" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Pesquisar</button>
-    <button type="reset" class="btn btn-outline-secondary">Limpar</button>
+  <div class="mt-2 pt-2 border-top" id="filters"></div>
+  <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
     <span id="summary" class="small text-body-secondary"></span>
     <span id="exports" class="ms-auto"></span>
   </div>
@@ -50,17 +45,30 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("form"), btn = document.getElementById("btn");
-  FLP.setDefaultPeriod(document.getElementById("start"), document.getElementById("end"), 1);
+  const period = FLP.relativePeriod(document.getElementById("period"), document.getElementById("start"),
+                                    document.getElementById("end"), document.getElementById("custom"),
+                                    { box: document.getElementById("lastN"), input: document.getElementById("lastNValue"),
+                                      label: document.getElementById("lastNLabel") });
   FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), "{{ default_adom }}");
-  form.addEventListener("reset", () => setTimeout(() => FLP.setDefaultPeriod(document.getElementById("start"), document.getElementById("end"), 1)));
+  const filters = FLP.filterBuilder(document.getElementById("filters"), () => form.requestSubmit());
+  document.getElementById("clear").addEventListener("click", () => { filters.clear(); document.getElementById("ob").checked = false; });
+
+  // botão direito na tabela: filtrar (=) ou excluir (≠) o valor e pesquisar de novo
+  const onFilter = (field, op, value) => {
+    if (!filters.has(field, op, value)) filters.add(field, op, value, false);
+    form.requestSubmit();
+  };
+
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
+    period.refresh();
     FLP.busy(btn, true);
     try {
-      const r = await FLP.api("/api/faz/logs", { method: "POST", body: FLP.formData(form) });
+      const body = { ...FLP.formData(form), filters: filters.get() };
+      const r = await FLP.api("/api/faz/logs", { method: "POST", body });
       document.getElementById("summary").innerHTML = `${r.returned} de ${r.total} evento(s) carregado(s)${r.cache ? " · do cache" : ""}` +
         ` <span class="text-body-tertiary" title="Filtro enviado ao FortiAnalyzer">· <code>${FLP.esc(r.filter || "(sem filtro)")}</code></span>`;
-      FLP.renderLogTable(document.getElementById("results"), r.rows);
+      FLP.renderLogTable(document.getElementById("results"), r.rows, { onFilter });
       FLP.exportButtons(document.getElementById("exports"), r.result_id);
     } catch (e) { FLP.toast(e.message, "danger"); }
     finally { FLP.busy(btn, false); }

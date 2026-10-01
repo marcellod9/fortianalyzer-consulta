@@ -2,11 +2,13 @@
 
 Todo valor digitado é validado antes de entrar na expressão (IPs com ipaddress,
 portas numéricas, textos sem aspas/barras), evitando injeção de filtro.
-Sintaxe de filtro do LogView: campo=valor, campo~"texto" (contém), unidos por "and".
+Sintaxe de filtro do LogView: campo=valor, campo!=valor, campo~"texto" (contém), unidos por "and".
 """
 import ipaddress
 import re
 from datetime import datetime
+
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -62,9 +64,65 @@ def _ip_or_net(v):
         raise ValueError("IP ou rede inválido")
 
 
+# Filtros que o usuário pode adicionar na tela (chave -> campo do log, tipo do valor)
+FILTER_FIELDS = {
+    "srcip": ("srcip", "ip"), "dstip": ("dstip", "ip"),
+    "srcport": ("srcport", "port"), "dstport": ("dstport", "port"),
+    "user": ("user", "text"), "hostname": ("hostname", "text"), "url": ("url", "text"),
+    "app": ("app", "text"), "service": ("service", "text"), "category": ("catdesc", "text"),
+    "policy": ("policyid", "policy"), "profile": ("profile", "text"),
+    "srcintf": ("srcintf", "text"), "dstintf": ("dstintf", "text"),
+    "action": ("action", "action"), "devname": ("devname", "text"),
+}
+
+
+class LogFilter(BaseModel):
+    """Um filtro adicionado pelo usuário: campo, operador (=, != ou ~ contém) e valor."""
+    field: str
+    op: Literal["=", "!=", "~"] = "="
+    value: str
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.field not in FILTER_FIELDS:
+            raise ValueError(f"Filtro desconhecido: {self.field}")
+        kind = FILTER_FIELDS[self.field][1]
+        v = str(self.value).strip()
+        if kind == "ip":
+            self.value = _ip_or_net(v) or ""
+        elif kind == "port":
+            if not v.isdigit() or not 1 <= int(v) <= 65535:
+                raise ValueError("Porta inválida")
+            self.value = str(int(v))
+        elif kind == "action":
+            if not SAFE_ACTION.match(v):
+                raise ValueError("Ação inválida")
+        elif kind == "policy":
+            if not v.isdigit():
+                self.value = _text(v) or ""
+        else:
+            self.value = _text(v) or ""
+        if not self.value:
+            raise ValueError(f"Informe um valor para o filtro {self.field}")
+        if kind in ("ip", "port", "action") and self.op == "~":
+            self.op = "="  # "contém" só faz sentido para texto
+        return self
+
+    def expr(self, logtype: str) -> str:
+        name, kind = FILTER_FIELDS[self.field]
+        if self.field == "hostname" and logtype == "dns":
+            name = "qname"  # logs DNS guardam o domínio em qname
+        if kind == "policy" and not self.value.isdigit():
+            name = "policyname"
+        if kind in ("ip", "port", "action") or (kind == "policy" and self.value.isdigit()):
+            return f"{name}{self.op}{self.value}"
+        return f'{name}{self.op}"{self.value}"'
+
+
 class LogQuery(BaseModel):
     adom: str = Field(default_factory=lambda: settings.faz_default_adom)
     devices: list[str] = []          # números de série (devid) dos firewalls; vazio = todos
+    devname: str | None = None       # nome do firewall (quando a lista do Device Manager não está disponível)
     logtype: str = "traffic"
     start: datetime
     end: datetime
@@ -78,6 +136,8 @@ class LogQuery(BaseModel):
     # navegação
     url: str | None = None
     hostname: str | None = None
+    app: str | None = None           # aplicação identificada (campo app)
+    category: str | None = None      # categoria do site (campo catdesc)
     # firewall
     policy: str | None = None        # número da regra (policyid) ou nome (policyname)
     profile: str | None = None       # perfil/política de segurança (ex.: web filter)
@@ -85,6 +145,7 @@ class LogQuery(BaseModel):
     dstintf: str | None = None
     action: str | None = None
     only_blocked: bool = False
+    filters: list[LogFilter] = []    # filtros adicionados na tela (inclusive os de "excluir", !=)
     limit: int = 500
 
     @field_validator("adom")
@@ -114,7 +175,7 @@ class LogQuery(BaseModel):
     def _ip(cls, v):
         return _ip_or_net(v)
 
-    @field_validator("user", "url", "hostname", "policy", "profile", "srcintf", "dstintf")
+    @field_validator("user", "url", "hostname", "policy", "profile", "srcintf", "dstintf", "devname", "app", "category")
     @classmethod
     def _txt(cls, v):
         return _text(v)
@@ -142,6 +203,8 @@ class LogQuery(BaseModel):
 
     def filter_expr(self) -> str:
         p: list[str] = []
+        if self.devname:
+            p.append(f'devname~"{self.devname}"')
         if self.srcip:
             p.append(f"srcip={self.srcip}")
         if self.dstip:
@@ -157,6 +220,10 @@ class LogQuery(BaseModel):
         if self.hostname:
             field = "qname" if self.logtype == "dns" else "hostname"  # logs DNS guardam o domínio em qname
             p.append(f'{field}~"{self.hostname}"')
+        if self.app:
+            p.append(f'app~"{self.app}"')
+        if self.category:
+            p.append(f'catdesc~"{self.category}"')
         if self.policy:
             p.append(f"policyid={self.policy}" if self.policy.isdigit() else f'policyname~"{self.policy}"')
         if self.profile:
@@ -165,6 +232,7 @@ class LogQuery(BaseModel):
             p.append(f'srcintf~"{self.srcintf}"')
         if self.dstintf:
             p.append(f'dstintf~"{self.dstintf}"')
+        p.extend(f.expr(self.logtype) for f in self.filters)
         action = self.action or (BLOCK_ACTIONS.get(self.logtype) if self.only_blocked else None)
         if action:
             p.append(f"action={action}")

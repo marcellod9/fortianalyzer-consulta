@@ -10,7 +10,7 @@
     <div class="col-md-3"><label class="form-label small">Site / domínio</label><input class="form-control form-control-sm" name="hostname" placeholder="facebook.com"></div>
     <div class="col-md-3"><label class="form-label small">IP de destino</label><input class="form-control form-control-sm" name="dstip" placeholder="200.160.2.3"></div>
     <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
-    <div class="col-md-3"><label class="form-label small">Firewall</label><select class="form-select form-select-sm" name="devices" id="devices"><option value="">Todos os firewalls</option></select></div>
+    <div class="col-md-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
     {% include "_period.html" %}
     <div class="col-md-1"><label class="form-label small">Limite</label><input type="number" class="form-control form-control-sm" name="limit" value="200" min="1" max="{{ max_results }}"></div>
   </div>

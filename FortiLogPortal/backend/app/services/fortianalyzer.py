@@ -95,11 +95,18 @@ class FazClient:
         return [{"name": a["name"], "desc": a.get("desc", "")} for a in data]
 
     def list_devices(self, adom: str) -> list[dict]:
+        """Firewalls da ADOM. Clusters HA vêm como um item, com os membros em ha_members."""
         with timed(self.source, f"dvmdb/adom/{adom}/device"):
-            data = self.call("get", f"/dvmdb/adom/{adom}/device",
-                             fields=["name", "sn", "ip", "platform_str", "desc"]) or []
-        return [{"name": d.get("name"), "sn": d.get("sn"), "ip": d.get("ip"),
-                 "platform": d.get("platform_str"), "desc": d.get("desc")} for d in data]
+            # sem "fields": a tabela ha_slave (membros do cluster) só vem no objeto completo
+            data = self.call("get", f"/dvmdb/adom/{adom}/device") or []
+        out = []
+        for d in data:
+            members = [{"name": m.get("name"), "sn": m.get("sn"), "role": m.get("role")}
+                       for m in (d.get("ha_slave") or []) if isinstance(m, dict)]
+            out.append({"name": d.get("name"), "sn": d.get("sn"), "ip": d.get("ip"),
+                        "platform": d.get("platform_str"), "desc": d.get("desc"),
+                        "ha_members": members if len(members) > 1 else []})
+        return sorted(out, key=lambda x: (x["name"] or "").lower())
 
     # ---- busca de logs ----------------------------------------------------
     def search_logs(self, adom: str, logtype: str, start: str, end: str, filter_expr: str = "",

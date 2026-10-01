@@ -10,7 +10,9 @@ from datetime import datetime, timedelta
 DEVICES = [
     {"name": "FW-BRASILIA", "sn": "FG200FDEMO000001", "ip": "10.10.0.1", "platform": "FortiGate-200F", "desc": "Demo"},
     {"name": "FW-CURITIBA", "sn": "FG100FDEMO000002", "ip": "10.20.0.1", "platform": "FortiGate-100F", "desc": "Demo"},
-    {"name": "FW-SAOPAULO", "sn": "FG600FDEMO000003", "ip": "10.30.0.1", "platform": "FortiGate-600F", "desc": "Demo"},
+    {"name": "FW-SAOPAULO", "sn": "FG600FDEMO000003", "ip": "10.30.0.1", "platform": "FortiGate-600F", "desc": "Demo",
+     "ha_members": [{"name": "FW-SAOPAULO-A", "sn": "FG600FDEMO000003", "role": "master"},
+                    {"name": "FW-SAOPAULO-B", "sn": "FG600FDEMO000004", "role": "slave"}]},
 ]
 USERS = ["joao.silva", "maria.souza", "ana.lima", "carlos.pereira", "", "beatriz.rocha"]
 SITES = [
@@ -43,7 +45,7 @@ class DemoFazClient:
         return [{"name": "root", "desc": "ADOM padrão (demo)"}, {"name": "Marista", "desc": "Unidades (demo)"}]
 
     def list_devices(self, adom):
-        return DEVICES
+        return [{"ha_members": [], **d} for d in DEVICES]
 
     def _log(self, rnd: random.Random, logtype: str, when: datetime, devs: list[dict]) -> dict:
         dev = rnd.choice(devs)
@@ -93,22 +95,22 @@ class DemoFazClient:
     @staticmethod
     def _match(log: dict, filter_expr: str) -> bool:
         for part in [p.strip() for p in filter_expr.split(" and ") if p.strip()]:
-            m = re.match(r'^(\w+)(=|~)"?(.*?)"?$', part)
+            m = re.match(r'^(\w+)(!=|=|~)"?(.*?)"?$', part)
             if not m:
                 continue
             field, op, val = m.groups()
             cur = str(log.get(field, ""))
-            if op == "=":
-                if "/" in val and field in ("srcip", "dstip"):
-                    import ipaddress
-                    try:
-                        if ipaddress.ip_address(cur) not in ipaddress.ip_network(val):
-                            return False
-                    except ValueError:
-                        return False
-                elif cur != val:
-                    return False
-            elif val.lower() not in cur.lower():
+            if op == "~":
+                ok = val.lower() in cur.lower()
+            elif "/" in val and field in ("srcip", "dstip"):
+                import ipaddress
+                try:
+                    ok = ipaddress.ip_address(cur) in ipaddress.ip_network(val)
+                except ValueError:
+                    ok = False
+            else:
+                ok = cur == val
+            if ok == (op == "!="):
                 return False
         return True
 
