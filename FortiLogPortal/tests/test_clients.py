@@ -52,7 +52,7 @@ def test_faz_logsearch_flow_add_get_delete():
     c = FazClient("https://faz.local", "tok", session=s)
     res = c.search_logs("root", "traffic", "2026-10-01 00:00:00", "2026-10-01 01:00:00", "srcip=10.0.0.1", ["FG1"], 10)
     assert res == {"total": 1, "returned": 1, "logs": [{"srcip": "10.0.0.1"}]}
-    assert [cl[2]["method"] for cl in s.calls] == ["add", "get", "delete"]
+    assert [cl[2]["method"] for cl in s.calls] == ["add", "get", "get", "delete"]  # 2º get: próxima página
     assert s.headers["Authorization"] == "Bearer tok"
 
 
@@ -118,3 +118,26 @@ def test_faz_retries_invalid_tid(monkeypatch):
     c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
     assert c.search_logs("root", "dns", "a", "b")["logs"] == []
     assert gets["n"] == 3
+
+
+def test_faz_reads_more_pages_when_faz_returns_fewer_rows(monkeypatch):
+    """O FAZ entrega no máximo 100 linhas por leitura: o cliente pagina com offset."""
+    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
+    all_rows = [{"id": i} for i in range(250)]
+    offsets = []
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        if body["method"] == "add":
+            return FakeResp(body={"result": {"tid": 9}})
+        if body["method"] == "get":
+            off = p["offset"]
+            offsets.append(off)
+            data = all_rows[off: off + min(p["limit"], 100)]
+            return FakeResp(body={"result": {"percentage": 100, "total-lines": 100, "data": data}})
+        return FakeResp(body={"result": {}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    res = c.search_logs("root", "traffic", "a", "b", limit=500)
+    assert res["returned"] == 250 and res["total"] == 250
+    assert res["logs"] == all_rows
+    assert offsets == [0, 100, 200, 250]

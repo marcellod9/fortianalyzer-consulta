@@ -129,9 +129,9 @@ class FazClient:
                             continue
                         raise
                     if res.get("percentage", 0) >= 100:
-                        rows = res.get("data") or []
-                        return {"total": res.get("total-lines", len(rows)),
-                                "returned": res.get("return-lines", len(rows)), "logs": rows}
+                        rows = self._fetch_pages(f"{base}/{tid}", res.get("data") or [], limit)
+                        total = max(res.get("total-lines") or 0, len(rows))
+                        return {"total": total, "returned": len(rows), "logs": rows}
                     if time.monotonic() > deadline:
                         raise FazError("Tempo limite da busca excedido; reduza o período ou refine o filtro.")
                     time.sleep(1)
@@ -140,6 +140,24 @@ class FazClient:
                     self.call("delete", f"{base}/{tid}", apiver=3)
                 except Exception:
                     pass
+
+
+    def _fetch_pages(self, url: str, rows: list, limit: int) -> list:
+        """Busca as páginas seguintes da tarefa até atingir o limite.
+
+        O FAZ pode devolver menos linhas por leitura do que o pedido (ex.: 100), então
+        lê de novo com offset até vir uma página vazia ou repetida.
+        """
+        rows = list(rows[:limit])
+        prev = rows[:1]
+        while rows and len(rows) < limit:
+            page = self.call("get", url, apiver=3, offset=len(rows), limit=limit - len(rows)) or {}
+            data = page.get("data") or []
+            if not data or data[:1] == prev:  # acabou, ou o FAZ ignorou o offset
+                break
+            prev = data[:1]
+            rows.extend(data[: limit - len(rows)])
+        return rows
 
 
 _client: FazClient | None = None
