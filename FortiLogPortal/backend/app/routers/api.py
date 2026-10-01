@@ -111,6 +111,38 @@ def search_logs(q: LogQuery, request: Request, cache: bool = True):
     return res
 
 
+@router.post("/faz/logs/live")
+def live_logs(q: LogQuery, request: Request, first: bool = False):
+    """Tempo real: a tela repete a mesma pesquisa a cada poucos segundos para a janela mais recente.
+
+    Usa a mesma pesquisa oficial do LogView (sem cache). Só a primeira pesquisa de cada sessão
+    de tempo real entra na auditoria e no histórico, para não gravar uma linha a cada atualização.
+    """
+    if first:
+        with tracked(request, "logs-tempo-real", q.describe(), q.model_dump(mode="json")) as info:
+            res = run_query(q, use_cache=False, save_cache=False)
+            info.update(count=res["returned"], blocked=res["bloqueados"],
+                        summary=f"Tempo real iniciado: {res['returned']} eventos na primeira janela")
+        return res
+    try:
+        return run_query(q, use_cache=False, save_cache=False)
+    except FazError as e:
+        raise HTTPException(502, str(e))
+
+
+class StoredLogs(BaseModel):
+    logtype: str = "traffic"
+    filter: str = ""
+    rows: list[dict] = Field(default=[], max_length=10000)
+
+
+@router.post("/faz/logs/store")
+def store_logs(body: StoredLogs):
+    """Guarda as linhas mostradas no tempo real para exportar (CSV/XLSX/PDF)."""
+    return {"result_id": store_result("logs", f"Logs {LOGTYPES.get(body.logtype, body.logtype)} (tempo real)",
+                                      explain.COLUMNS, body.rows, {"Filtro": body.filter or "(nenhum)"})}
+
+
 # ---- Vision One -----------------------------------------------------------------------
 class RepQuery(BaseModel):
     indicator: str = Field(min_length=1, max_length=2048)

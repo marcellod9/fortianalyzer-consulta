@@ -89,3 +89,10 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 .table-logs.table-fixed .cell-motivo { min-width: 0; }
 .table-logs.table-fixed th { overflow: hidden; text-overflow: ellipsis; }
 .table-logs tbody tr[data-i] > td:first-child { padding-left: .6rem; }
+
+/* tempo real na aba Logs */
+.live-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; background: var(--bs-danger);
+  vertical-align: middle; animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.table-logs tr.row-new > td { animation: row-new 4s ease-out; }
+@keyframes row-new { 0%, 30% { background-color: rgba(var(--bs-warning-rgb), .35); } 100% { background-color: transparent; } }

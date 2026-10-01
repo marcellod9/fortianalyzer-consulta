@@ -355,26 +355,27 @@ const FLP = (() => {
   ["click", "scroll", "resize"].forEach((t) => addEventListener(t, closeCtx, true));
   addEventListener("keydown", (e) => { if (e.key === "Escape") { ctxMenu?.remove(); ctxMenu = null; } });
 
+  // Devolve um objeto com update(rows) para trocar as linhas sem perder busca, filtro e colunas (tempo real).
   function renderLogTable(container, rows, opts = {}) {
     if (!rows.length) {
-      container.innerHTML = `<div class="alert alert-secondary">Nenhum evento encontrado para os filtros informados.</div>`;
-      return;
+      container.innerHTML = `<div class="alert alert-secondary">${esc(opts.empty || "Nenhum evento encontrado para os filtros informados.")}</div>`;
+      return null;
     }
     const count = (s) => rows.filter((r) => situationOf(r) === s).length;
-    const n = { bloqueado: count("bloqueado"), falha: count("falha"), permitido: count("permitido") };
+    let n = { bloqueado: count("bloqueado"), falha: count("falha"), permitido: count("permitido") };
     // mantém a escolha do usuário entre uma pesquisa e outra (ex.: filtro aplicado pelo botão direito)
     let filtro = container.dataset.sit || (n.bloqueado ? "bloqueado" : "todos");
     if (filtro !== "todos" && !n[filtro]) filtro = "todos";
     const state = { filtro, texto: "", agrupar: store.get("flp-agrupar", "1") === "1" };
     const chip = (k, label, cls) => `<input type="radio" class="btn-check" name="sit-${container.id}" id="sit-${container.id}-${k}" value="${k}" ${state.filtro === k ? "checked" : ""}>
-      <label class="btn btn-sm btn-outline-${cls}" for="sit-${container.id}-${k}">${label}</label>`;
+      <label class="btn btn-sm btn-outline-${cls}" for="sit-${container.id}-${k}">${label} (<span data-n="${k}"></span>)</label>`;
     container.innerHTML = `
       <div class="d-flex flex-wrap gap-2 align-items-center mb-2 log-toolbar">
         <div class="btn-group" role="group" aria-label="Situação">
-          ${chip("todos", `Todos (${rows.length})`, "secondary")}
-          ${chip("bloqueado", `<i class="bi bi-x-octagon"></i> Bloqueados (${n.bloqueado})`, "danger")}
-          ${n.falha ? chip("falha", `<i class="bi bi-exclamation-triangle"></i> Falhas (${n.falha})`, "warning") : ""}
-          ${chip("permitido", `<i class="bi bi-check-circle"></i> Permitidos (${n.permitido})`, "success")}
+          ${chip("todos", "Todos", "secondary")}
+          ${chip("bloqueado", `<i class="bi bi-x-octagon"></i> Bloqueados`, "danger")}
+          ${chip("falha", `<i class="bi bi-exclamation-triangle"></i> Falhas`, "warning")}
+          ${chip("permitido", `<i class="bi bi-check-circle"></i> Permitidos`, "success")}
         </div>
         <input type="search" class="form-control form-control-sm log-search" placeholder="Filtrar nesta lista (usuário, site, IP...)">
         <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="agr-${container.id}" ${state.agrupar ? "checked" : ""}>
@@ -395,11 +396,16 @@ const FLP = (() => {
       const cols = loadCols().filter((c) => c.on && (!COL_BY_KEY[c.key].grouped || state.agrupar)).map((c) => COL_BY_KEY[c.key]);
       thead.innerHTML = `<tr>${cols.map((c) => `<th class="text-nowrap" data-key="${c.key}">${esc(c.head || c.label)}<span class="col-resizer" title="Arraste para ajustar a largura · duplo clique: automático"></span></th>`).join("")}</tr>`;
       applyWidths(thead.closest("table"), loadWidths());
-      tbody.innerHTML = shown.length ? shown.map((r, i) => `<tr data-i="${i}" class="sit-${situationOf(r)}">${cols.map((c) =>
+      tbody.innerHTML = shown.length ? shown.map((r, i) => `<tr data-i="${i}" class="sit-${situationOf(r)}${r._novo ? " row-new" : ""}">${cols.map((c) =>
           c.td(r).replace(/^<td/, `<td data-col="${c.key}"`)).join("")}</tr>`).join("")
         : `<tr><td colspan="${cols.length}" class="text-center text-body-secondary py-3">Nenhum evento com este filtro.</td></tr>`;
       container.querySelector(".log-count").textContent = state.agrupar
         ? `${shown.length} linha(s) agrupando ${list.length} evento(s)` : `${shown.length} evento(s)`;
+    };
+    // contadores dos botões; o de "Falhas" só aparece quando há falhas de conexão na lista
+    const syncChips = () => {
+      container.querySelectorAll("[data-n]").forEach((el) => { el.textContent = el.dataset.n === "todos" ? rows.length : n[el.dataset.n]; });
+      container.querySelector(`label[for="sit-${container.id}-falha"]`).classList.toggle("d-none", !n.falha);
     };
     container.querySelectorAll(`input[name="sit-${container.id}"]`).forEach((r) => r.addEventListener("change", () => { state.filtro = container.dataset.sit = r.value; draw(); }));
     container.querySelector(".log-search").addEventListener("input", (e) => { state.texto = e.target.value.trim(); draw(); });
@@ -422,7 +428,16 @@ const FLP = (() => {
     tbody.addEventListener("dblclick", (e) => {
       const tr = e.target.closest("tr[data-i]"); if (tr) showLogModal(shown[+tr.dataset.i]);
     });
+    syncChips();
     draw();
+    return {
+      update(newRows) {
+        rows = newRows;
+        n = { bloqueado: count("bloqueado"), falha: count("falha"), permitido: count("permitido") };
+        syncChips();
+        draw();
+      },
+    };
   }
 
   function fieldList(pairs) {

@@ -17,7 +17,7 @@ def _cache_key(q: LogQuery) -> str:
     return "faz3:" + hashlib.sha1(raw.encode()).hexdigest()
 
 
-def run_query(q: LogQuery, use_cache: bool = True) -> dict:
+def run_query(q: LogQuery, use_cache: bool = True, save_cache: bool = True) -> dict:
     key = _cache_key(q)
     if use_cache:
         hit = database.cache_get(key)
@@ -34,7 +34,8 @@ def run_query(q: LogQuery, use_cache: bool = True) -> dict:
         "total": res["total"], "returned": len(rows), "filter": q.filter_expr(), "logtype": q.logtype,
         "bloqueados": sum(1 for r in rows if r["bloqueado"]), "rows": rows, "cache": False,
     }
-    database.cache_set(key, out)
+    if save_cache:
+        database.cache_set(key, out)
     return out
 
 

@@ -118,13 +118,26 @@ class DemoFazClient:
         t0 = datetime.strptime(start, "%Y-%m-%d %H:%M:%S")
         t1 = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
         devs = [d for d in DEVICES if not devices or d["sn"] in devices or d["name"] in devices] or DEVICES
-        rnd = random.Random(f"{logtype}{start}{end}")
         span = max(1, int((t1 - t0).total_seconds()))
         logs = []
-        for _ in range(3000):
-            when = t0 + timedelta(seconds=rnd.randint(0, span))
-            lg = self._log(rnd, logtype, when, devs)
-            if self._match(lg, filter_expr):
-                logs.append(lg)
+        if span <= 6 * 3600:
+            # períodos curtos: logs fixos por minuto, para buscas que se sobrepõem (tempo real)
+            # devolverem os mesmos eventos e os novos irem "chegando" com o relógio
+            minute = t0.replace(second=0, microsecond=0)
+            while minute <= t1:
+                rnd = random.Random(f"{logtype}{minute:%Y%m%d%H%M}")
+                for _ in range(rnd.randint(4, 12)):
+                    when = minute + timedelta(seconds=rnd.randint(0, 59))
+                    lg = self._log(rnd, logtype, when, DEVICES)
+                    if t0 <= when <= t1 and lg["devid"] in {d["sn"] for d in devs} and self._match(lg, filter_expr):
+                        logs.append(lg)
+                minute += timedelta(minutes=1)
+        else:
+            rnd = random.Random(f"{logtype}{start}{end}")
+            for _ in range(3000):
+                when = t0 + timedelta(seconds=rnd.randint(0, span))
+                lg = self._log(rnd, logtype, when, devs)
+                if self._match(lg, filter_expr):
+                    logs.append(lg)
         logs.sort(key=lambda r: r["itime"], reverse=True)
         return {"total": len(logs), "returned": min(len(logs), limit), "logs": logs[:limit]}

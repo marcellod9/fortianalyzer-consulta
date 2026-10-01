@@ -88,3 +88,25 @@ def test_inventory_falls_back_without_dvmdb_permission(client, monkeypatch):
     r = client.get("/api/faz/adoms")
     assert r.status_code == 200 and r.json()[0]["name"] == api.settings.faz_default_adom
     assert client.get("/api/faz/adoms/root/devices").json() == []
+
+
+def test_live_logs_overlapping_windows_and_history(client):
+    """Tempo real: janelas que se sobrepõem trazem os mesmos eventos; só a 1ª atualização vai ao histórico."""
+    base = {"logtype": "traffic", "limit": 1000}
+    a = client.post("/api/faz/logs/live?first=true", json={**base, "start": "2026-10-01T10:00:00", "end": "2026-10-01T10:05:00"}, headers=H)
+    b = client.post("/api/faz/logs/live", json={**base, "start": "2026-10-01T10:02:00", "end": "2026-10-01T10:07:00"}, headers=H)
+    assert a.status_code == 200 and b.status_code == 200, a.text + b.text
+    key = lambda r: (r["data_hora"], r["ip_origem"], r["porta_origem"])  # noqa: E731
+    in_both = {key(r) for r in a.json()["rows"] if r["data_hora"] >= "2026-10-01 10:02:00"}
+    assert in_both and in_both <= {key(r) for r in b.json()["rows"]}
+    assert all(not r.get("cache") for r in (a.json(), b.json()))
+    hist = [h for h in client.get("/api/history", params={"type": "logs-tempo-real"}).json()]
+    assert len([h for h in hist if h["query_type"] == "logs-tempo-real"]) == 1
+
+
+def test_live_logs_store_for_export(client):
+    rows = client.post("/api/faz/logs/live", json={"logtype": "webfilter", "start": "2026-10-01T10:00:00",
+                                                   "end": "2026-10-01T10:05:00"}, headers=H).json()["rows"]
+    r = client.post("/api/faz/logs/store", json={"logtype": "webfilter", "filter": "", "rows": rows})
+    assert r.status_code == 200
+    assert client.get(f"/api/export/{r.json()['result_id']}.csv", headers=H).status_code == 200

@@ -23,16 +23,22 @@ o usuário do Windows que iniciou o servidor.
 2. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
    "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
    botão direito (filtrar/excluir) e o duplo clique (detalhes).
-3. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
-4. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
+3. **Logs em tempo real**: clique em *Tempo real* (escolha 5 s, 10 s, 30 s ou 1 min). A lista
+   começa com os últimos 5 minutos e os eventos novos entram no topo, destacados. Gere um acesso
+   bloqueado de teste e veja se ele aparece. *Pausar* para a atualização e libera a exportação.
+4. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
+5. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
    esteja na lista de Suspicious Objects do tenant.
-5. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
-6. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
-7. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
+6. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
+7. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
+8. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
 
 ## Dicas de desempenho
 
 - Buscas longas (7 dias, sem filtro) pesam no FortiAnalyzer. Prefira períodos curtos e filtros.
+- O tempo real faz uma pesquisa a cada ciclo (olhando os últimos 3 minutos de novo, porque o
+  FortiAnalyzer leva alguns segundos para receber e indexar cada log). Ele não atualiza com a aba
+  escondida e pausa sozinho depois de 1 hora ligado. Em firewalls muito movimentados, use filtros.
 - Resultados ficam em cache por `PORTAL_CACHE_TTL` segundos (padrão 10 min). Para forçar nova
   consulta, use *Configuração > Limpar cache*.
 - O dashboard do FortiAnalyzer usa uma amostra dos bloqueios mais recentes (até
