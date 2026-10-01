@@ -218,6 +218,7 @@ def set_policy_name(row: dict, name: str) -> None:
     """Completa o nome da regra em logs que só trazem o número (filtro web, DNS, aplicações...)."""
     lg = row.get("log_original") or {}
     row["regra"] = rule_label(lg.get("policyid"), name)
+    row["regra_nome"] = name
     row["explicacao"] = explain(row)
 
 
@@ -231,6 +232,8 @@ def normalize(log: dict, logtype: str) -> dict:
     policy_id = log.get("policyid")
     policy_name = log.get("policyname") or ""
     regra = rule_label(policy_id, policy_name)
+    regra_id = "" if policy_id in (None, "") else str(policy_id)
+    regra_nome = "bloqueio implícito" if regra_id == "0" else policy_name
     blocked = is_blocked(log)
     row = {
         "data_hora": _when(log),
@@ -245,6 +248,8 @@ def normalize(log: dict, logtype: str) -> dict:
         "aplicacao": log.get("app") or log.get("service") or "",
         "categoria": log.get("appcat") or log.get("catdesc") or "",
         "regra": regra,
+        "regra_id": regra_id,
+        "regra_nome": regra_nome,
         "politica": log.get("profile") or "",
         "interface_entrada": log.get("srcintf") or "",
         "interface_saida": log.get("dstintf") or "",

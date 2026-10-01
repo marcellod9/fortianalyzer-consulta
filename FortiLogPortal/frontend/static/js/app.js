@@ -181,7 +181,10 @@ const FLP = (() => {
     { key: "url", label: "URL", td: txt("url", "cell-trunc") },
     { key: "aplicacao", label: "Aplicação", td: txt("aplicacao", "cell-trunc") },
     { key: "categoria", label: "Categoria", td: txt("categoria", "cell-trunc") },
-    { key: "regra", label: "Regra", td: txt("regra", "cell-trunc") },
+    { key: "regra", label: "Regra (nº e nome)", head: "Regra", td: (r) => {
+        const [id, nome] = r.regra_id !== undefined ? [r.regra_id, r.regra_nome] : String(r.regra || "").split(" - ");
+        return `<td class="cell-dest" title="${esc(r.regra)}"><div class="fw-semibold">${esc(id || r.regra || "")}</div>
+          <div class="small text-body-secondary cell-trunc">${esc(nome || "")}</div></td>`; } },
     { key: "politica", label: "Perfil de segurança", td: txt("politica", "cell-trunc") },
     { key: "interface_entrada", label: "Interface de entrada", td: txt("interface_entrada", "text-nowrap") },
     { key: "interface_saida", label: "Interface de saída", td: txt("interface_saida", "text-nowrap") },
