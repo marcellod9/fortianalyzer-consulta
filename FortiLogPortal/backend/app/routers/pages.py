@@ -1,4 +1,6 @@
 """Páginas HTML (Jinja2 + Bootstrap 5)."""
+import hashlib
+
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
@@ -8,6 +10,18 @@ from ..services.faz_filters import LOGTYPES
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "frontend" / "templates"))
 router = APIRouter()
+
+
+def _asset_version() -> str:
+    """Muda sempre que app.css/os .js mudam: o navegador não reaproveita arquivo antigo depois do update."""
+    h = hashlib.sha1()
+    static = BASE_DIR / "frontend" / "static"
+    for f in sorted([*static.glob("css/*.css"), *static.glob("js/*.js")]):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_V = _asset_version()
 
 PAGES = [
     ("/", "dashboard", "Dashboard", "speedometer2"),
@@ -21,7 +35,7 @@ PAGES = [
 
 
 def _ctx(request: Request, page: str) -> dict:
-    return {"request": request, "page": page, "pages": PAGES, "demo": settings.demo, "versao": __version__,
+    return {"request": request, "page": page, "pages": PAGES, "demo": settings.demo, "versao": __version__, "asset_v": ASSET_V,
             "logtypes": LOGTYPES, "default_adom": settings.faz_default_adom,
             "sandbox_enabled": settings.v1_sandbox_enabled, "max_results": settings.faz_max_results}
 

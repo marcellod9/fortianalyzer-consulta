@@ -17,6 +17,7 @@ O script:
    `.gitignore` e `config\.env.example`.
 5. Atualiza as dependências Python e aplica mudanças de esquema do banco.
 6. Lista as opções novas do `config\.env.example` que ainda não estão no seu `config\.env`.
+7. Inicia o portal (o mesmo que `scripts\start.bat`). Para só atualizar, use `-NoStart`.
 
 Nunca são alterados:
 
@@ -32,6 +33,7 @@ Nunca são alterados:
 ```powershell
 scripts\update.bat -Force          # reinstala mesmo já estando na versão mais recente
 scripts\update.bat -Branch main    # usa outro branch nesta execução
+scripts\update.bat -NoStart        # só atualiza, sem iniciar o portal
 ```
 
 Para fixar repositório e branch, acrescente ao `config\.env`:

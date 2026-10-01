@@ -7,11 +7,12 @@
 # Uso: scripts\update.bat            (ou: powershell -ExecutionPolicy Bypass -File scripts\update.ps1)
 #      scripts\update.bat -Force     (reinstala mesmo se já estiver na versão mais recente)
 #      scripts\update.bat -Branch main
+#      scripts\update.bat -NoStart   (só atualiza, sem iniciar o portal no final)
 #
 # Repositório e branch podem ser definidos no config\.env:
 #   UPDATE_REPO=marcellod9/fortianalyzer-consulta
 #   UPDATE_BRANCH=claude/fortilogportal-poc-vf3roq
-param([string]$Branch = "", [string]$Repo = "", [switch]$Force)
+param([string]$Branch = "", [string]$Repo = "", [switch]$Force, [switch]$NoStart)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
@@ -78,6 +79,7 @@ try {
 }
 if ($latest -and $latest -eq $installed -and -not $Force) {
     Write-Host "Você já está na versão mais recente. Use -Force para reinstalar." -ForegroundColor Green
+    if (-not $NoStart) { & (Join-Path $PSScriptRoot "start.ps1") }
     exit 0
 }
 
@@ -165,4 +167,9 @@ if (Test-Path "config\.env") {
 }
 
 Write-Host ""
-Write-Host "Atualização concluída. Inicie o portal com scripts\start.bat" -ForegroundColor Green
+if ($NoStart) {
+    Write-Host "Atualização concluída. Inicie o portal com scripts\start.bat" -ForegroundColor Green
+} else {
+    Write-Host "Atualização concluída. Iniciando o portal ..." -ForegroundColor Green
+    & (Join-Path $Root "scripts\start.ps1")
+}
