@@ -119,6 +119,7 @@ responder HTTP 403, a tela de reputação mostra qual fonte falhou; ajuste a fun
 | `GET /v3.0/endpointSecurity/endpoints/{id}` | situação do agente: ligado, último contato, sensor XDR, isolamento |
 | `GET /v3.0/endpointSecurity/endpoints` | inventário de endpoints (`/api/v1/endpoints`) |
 | `POST /v3.0/sandbox/urls/analyze`, `GET /v3.0/sandbox/tasks/{id}`, `GET /v3.0/sandbox/analysisResults/{id}` | análise de URL no Sandbox (opcional) |
+| `GET /v3.0/sandbox/submissionUsage` | cota diária do Sandbox (`submissionRemainingCount`), conferida antes de cada envio |
 
 ### Como a reputação é calculada
 
@@ -141,6 +142,15 @@ avulso. O portal consolida as fontes oficiais acima:
 "Sem registro" significa que o indicador não aparece no tenant no período (`V1_LOOKBACK_DAYS`),
 não que é seguro. Para URLs, o Sandbox dá uma análise própria (`V1_SANDBOX_ENABLED=true`;
 consome a cota diária de envios do tenant).
+
+**Economia do Sandbox.** Pela tabela de créditos da Trend, cada envio ao Sandbox (manual ou pela
+API) custa 2 créditos; consultar o andamento e o resultado não custa. Por isso o portal guarda cada
+envio no banco local e, se a mesma URL foi enviada nas últimas 24 h, reaproveita aquela análise
+(concluída ou ainda em andamento) em vez de enviar de novo. A tela avisa "Resultado reaproveitado" e
+oferece *Analisar de novo*, que pede confirmação e faz um envio novo. Antes de cada envio o portal
+consulta a cota do dia: com cota zerada, o envio não sai; se a chave não tiver permissão para ver a
+cota, o envio segue normalmente. O reaproveitamento vale para quem usa o mesmo portal (o mesmo
+banco); com cada analista rodando o seu, ele é por máquina.
 
 ### Consultas de detecções
 

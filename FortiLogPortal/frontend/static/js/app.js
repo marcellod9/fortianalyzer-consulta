@@ -564,30 +564,60 @@ const FLP = (() => {
   const fortiguardBody = (rep) => (rep.fortiguard?.origem === "evento" && rep.fortiguard.categoria
     ? { categoria_fortiguard: rep.fortiguard.categoria } : {});
 
+  // Cota diária do Sandbox ("" quando o Vision One não informa ou a chave não pode ver a cota)
+  async function sandboxQuotaText() {
+    try {
+      const q = await api("/api/v1/sandbox-quota");
+      if (q.restantes === null || q.restantes === undefined) return "";
+      const n = (v) => Number(v).toLocaleString("pt-BR");
+      return `Cota do Sandbox hoje: ${n(q.restantes)}${q.total ? ` de ${n(q.total)}` : ""} envios disponíveis.`;
+    } catch { return ""; }
+  }
+
+  // Envia (ou reaproveita) a análise do Sandbox. force: envia de novo mesmo com análise da mesma URL em 24 h.
+  async function submitSandbox(indicator, type, extra, force = false) {
+    const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: true, sandbox_force: force, ...extra } });
+    const sb = sub.detalhes?.sandbox;
+    if (!sb?.task_id) throw new Error(sub.erros?.sandbox || "O Sandbox não aceitou o envio.");
+    return sb;
+  }
+
+  // o botão clicado some da tela e leva o foco junto; devolve à janela aberta para o Esc continuar fechando
+  function keepModalFocus(el) {
+    const modal = el.closest(".modal");
+    if (modal?.classList.contains("show") && !modal.contains(document.activeElement)) modal.focus();
+  }
   function sandboxButton(box, rep, sbBox, onResult) {
     const card = box.querySelector(".card-body");
     if (!card || rep.detalhes?.sandbox_resultado) return;  // já tem resultado do Sandbox no veredito
     const off = !sandboxEnabled();
-    card.insertAdjacentHTML("beforeend", `<div class="mt-2"><span title="${off ? "Desabilitado: defina V1_SANDBOX_ENABLED=true em config\\.env" : "Envia a URL para análise dinâmica no Sandbox do Vision One (consome cota)"}">
+    card.insertAdjacentHTML("beforeend", `<div class="mt-2 d-flex flex-wrap align-items-center gap-2"><span title="${off ? "Desabilitado: defina V1_SANDBOX_ENABLED=true em config\\.env"
+      : "Envia a URL para análise dinâmica no Sandbox do Vision One. Se a mesma URL foi analisada nas últimas 24 h, o portal reaproveita o resultado e não gasta cota."}">
       <button type="button" class="btn btn-sm btn-outline-primary" data-sandbox ${off ? "disabled" : ""}><span class="spinner-border spinner-border-sm spinner-overlay"></span>
-      <i class="bi bi-box-seam"></i> Analisar no Sandbox</button></span></div>`);
+      <i class="bi bi-box-seam"></i> Analisar no Sandbox</button></span><span class="small text-body-secondary" data-quota></span></div>`);
     const b = card.querySelector("[data-sandbox]");
+    if (!off) sandboxQuotaText().then((t) => { const q = card.querySelector("[data-quota]"); if (q) q.textContent = t; });
     b.addEventListener("click", async () => {
       busy(b, true);
       try {
-        const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator: rep.indicador, type: rep.tipo, sandbox: true, ...fortiguardBody(rep) } });
-        const task = sub.detalhes?.sandbox?.task_id;
-        if (!task) throw new Error(sub.erros?.sandbox || "O Sandbox não aceitou o envio.");
+        const sb = await submitSandbox(rep.indicador, rep.tipo, fortiguardBody(rep));
         b.closest("div").remove();
-        sandboxFlow(sbBox, rep.indicador, rep.tipo, task, onResult, fortiguardBody(rep));
+        keepModalFocus(sbBox);
+        sandboxFlow(sbBox, rep.indicador, rep.tipo, sb.task_id, onResult, fortiguardBody(rep), sb);
       } catch (e) { toast(`Sandbox: ${e.message}`, "warning"); busy(b, false); }
     });
   }
 
   // Acompanha a análise do Sandbox e, ao terminar, refaz a reputação com o resultado no veredito
   // (as outras fontes não são consultadas de novo). Para sozinho se a janela for fechada.
-  async function sandboxFlow(box, indicator, type, taskId, onResult, extra = {}) {
-    box.innerHTML = `<div class="alert alert-info small mb-0"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${esc(taskId)}). Pode levar alguns minutos...</div>`;
+  // info: resposta do envio; com info.reaproveitado, a análise é de um envio anterior da mesma URL (24 h).
+  async function sandboxFlow(box, indicator, type, taskId, onResult, extra = {}, info = null) {
+    const reused = !!info?.reaproveitado;
+    const when = reused ? `${esc(info.enviado_em)}${info.enviado_por ? ` por ${esc(info.enviado_por)}` : ""}` : "";
+    box.innerHTML = reused
+      ? `<div class="alert alert-info small mb-0"><span class="spinner-border spinner-border-sm"></span> A mesma URL já está em análise no Sandbox (enviada em ${when}). O portal acompanha essa análise, sem novo envio.</div>`
+      : `<div class="alert alert-info small mb-0"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${esc(taskId)}). Pode levar alguns minutos...</div>`;
+    keepModalFocus(box);
     for (let i = 0; i < 60; i++) {
       if (!box.isConnected) return;
       try {
@@ -598,7 +628,19 @@ const FLP = (() => {
           box.innerHTML = `<div class="alert alert-${verdictClass(res.risco === "high" ? "Malicioso" : res.risco === "medium" ? "Suspeito" : "")} small mb-0">
             <b>Sandbox concluído:</b> risco ${esc(res.severidade)} · ameaças: ${esc((res.tipos_ameaca || []).join(", ") || "nenhuma")}
             · detecções: ${esc((res.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${esc(res.concluido_em)}
+            ${reused ? `<div class="mt-1 d-flex flex-wrap align-items-center gap-2"><span><i class="bi bi-recycle"></i> Resultado reaproveitado da análise enviada em ${when}: não gastou cota nem créditos.</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-again title="Envia a URL de novo ao Sandbox (gasta cota e créditos)">
+                <span class="spinner-border spinner-border-sm spinner-overlay"></span> Analisar de novo</button></div>` : ""}
             <div class="sb-upd mt-1"><span class="spinner-border spinner-border-sm"></span> Atualizando a reputação com o resultado do Sandbox...</div></div>`;
+          box.querySelector("[data-again]")?.addEventListener("click", async (ev) => {
+            if (!confirm("Enviar a URL de novo ao Sandbox? Isso gasta cota e créditos do Vision One.")) return;
+            const again = ev.currentTarget;
+            busy(again, true);
+            try {
+              const sb = await submitSandbox(indicator, type, extra, true);
+              sandboxFlow(box, indicator, type, sb.task_id, onResult, extra, sb);
+            } catch (e) { toast(`Sandbox: ${e.message}`, "warning"); busy(again, false); }
+          });
           try {
             onResult(await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: false, sandbox_task: taskId, ...extra } }));
           } catch (e) { toast(e.message, "danger"); }
@@ -963,5 +1005,5 @@ const FLP = (() => {
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
   return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
-           renderLogTable, exportButtons, renderReputation, sandboxFlow, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
+           renderLogTable, exportButtons, renderReputation, sandboxFlow, sandboxQuotaText, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();

@@ -19,9 +19,10 @@ permissão na chave), as demais continuam e o erro é mostrado na tela.
 import hashlib
 import ipaddress
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from .. import database
 from ..config import settings
@@ -177,8 +178,10 @@ def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool)
 
 def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "",
            sandbox_task: str | None = None, fortiguard_category: str | None = None,
-           fortiguard_from_faz: bool = True) -> dict:
+           fortiguard_from_faz: bool = True, sandbox_force: bool = False) -> dict:
     """Reputação consolidada. sandbox_task: tarefa do Sandbox já concluída, para entrar no veredito.
+
+    use_sandbox reaproveita a análise da mesma URL das últimas 24 h; sandbox_force envia de novo.
 
     fortiguard_category: categoria do site já conhecida (ex.: do log aberto na tela). Sem ela, e com
     fortiguard_from_faz, o portal procura a categoria nos logs do FortiAnalyzer das últimas 24 h.
@@ -190,7 +193,7 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
             raise IndicatorError("Categoria do FortiGuard inválida.")
     cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}:"
                                       f"{fortiguard_category}:{fortiguard_from_faz}".encode()).hexdigest()
-    cached = database.cache_get(cache_key)
+    cached = None if use_sandbox else database.cache_get(cache_key)
     if cached:
         cached["cache"] = True
         return cached
@@ -211,10 +214,10 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         except V1Error as e:
             errors[name] = str(e)
 
-    # Ao incluir um Sandbox concluído, reaproveita as fontes da consulta anterior (mesmo indicador):
-    # só o resultado do Sandbox é buscado de novo.
+    # Ao enviar ao Sandbox ou incluir um Sandbox concluído, reaproveita as fontes da consulta anterior
+    # (mesmo indicador): só o Sandbox é consultado de novo.
     src_key = f"repsrc:{ioc_type}:{value}"
-    previous = database.temp_get(src_key) if sandbox_task else None
+    previous = database.temp_get(src_key) if sandbox_task or use_sandbox else None
     if previous:
         sources.update(previous["sources"])
         errors.update(previous["errors"])
@@ -240,7 +243,7 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         if not settings.v1_sandbox_enabled:
             errors["sandbox"] = "Envio ao Sandbox desabilitado (V1_SANDBOX_ENABLED=false)."
         else:
-            run("sandbox", lambda: client.sandbox_submit_url(sandbox_url))
+            run("sandbox", lambda: sandbox_submit(sandbox_url, username, force=sandbox_force))
     elif use_sandbox and ioc_type == "ip":
         errors["sandbox"] = "O Sandbox analisa URLs; para IP ele não é usado."
 
@@ -259,7 +262,7 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
     result = consolidate(ioc_type, value, sources, errors, fortiguard)
     result["periodo"] = {"inicio": start.strftime("%Y-%m-%d %H:%M"), "fim": end.strftime("%Y-%m-%d %H:%M")}
     result["cache"] = False
-    if not errors:
+    if not errors and not use_sandbox:
         database.cache_set(cache_key, result)
     database.add_ioc_lookup(value, ioc_type, result["reputacao"], result["risk_score"], ", ".join(result["fontes"]))
     return result
@@ -269,6 +272,9 @@ def sandbox_status(task_id: str) -> dict:
     """Acompanha uma análise de URL enviada ao Sandbox e devolve o resultado quando pronto."""
     if not re.fullmatch(r"[\w\-]{1,80}", task_id or ""):
         raise IndicatorError("Identificador de tarefa inválido.")
+    run = database.sandbox_run_get(task_id)
+    if run and run["status"] == "succeeded" and run["result"]:
+        return {"task_id": task_id, "status": "succeeded", "resultado": run["result"]}  # o resultado não muda
     client = visionone.get_client()
     task = client.sandbox_task(task_id)
     status = task.get("status")
@@ -289,9 +295,75 @@ def sandbox_status(task_id: str) -> dict:
                                         for o in client.sandbox_result_iocs(rid)]
         except V1Error:
             out["resultado"]["iocs"] = []
+        if run:
+            database.sandbox_run_finish(task_id, "succeeded", out["resultado"])
     elif status in ("failed", "rejected", "canceled"):
         out["erro"] = (task.get("error") or {}).get("message", "Análise não concluída no Sandbox.")
+        if run:
+            database.sandbox_run_finish(task_id, "failed", error=out["erro"])
     return out
+
+
+# ---- economia do Sandbox: a mesma URL não é enviada de novo em 24 h ------------------------
+SANDBOX_REUSE_HOURS = 24
+QUOTA_KEY = "v1:sandbox-quota"
+QUOTA_TTL = 300
+
+
+def sandbox_key(url: str) -> str:
+    """A mesma URL para o Sandbox: esquema e site em minúsculas, sem #fragmento e com "/" quando não há caminho."""
+    p = urlsplit(url)
+    return urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path or "/", p.query, ""))
+
+
+def reusable_sandbox(url: str) -> dict | None:
+    """Análise da mesma URL nas últimas 24 h que ainda vale: concluída ou em andamento (consultar não gasta cota)."""
+    for run in database.sandbox_runs_for(sandbox_key(url), time.time() - SANDBOX_REUSE_HOURS * 3600):
+        if run["status"] == "running":
+            try:
+                st = sandbox_status(run["task_id"])
+            except (V1Error, IndicatorError):
+                continue
+            if st.get("erro"):
+                continue
+            run["status"] = st.get("status") or "running"
+        if run["status"] != "failed":
+            return run
+    return None
+
+
+def sandbox_quota(refresh: bool = False) -> dict:
+    """Cota diária do Sandbox: envios que ainda restam hoje (e o total, quando o Vision One informa)."""
+    if not refresh:
+        hit = database.cache_get(QUOTA_KEY)
+        if hit is not None:
+            return hit
+    try:
+        u = visionone.get_client().sandbox_usage()
+        out = {"restantes": u.get("submissionRemainingCount"), "total": u.get("submissionReserveCount"), "erro": None}
+    except V1Error as e:
+        out = {"restantes": None, "total": None, "erro": str(e)}
+    database.cache_set(QUOTA_KEY, out, ttl=QUOTA_TTL)
+    return out
+
+
+def sandbox_submit(url: str, username: str = "", force: bool = False) -> dict:
+    """Envia a URL ao Sandbox ou, sem force, reaproveita a análise da mesma URL das últimas 24 h."""
+    if not force:
+        run = reusable_sandbox(url)
+        if run:
+            return {"task_id": run["task_id"], "url": url, "reaproveitado": True, "status": run["status"],
+                    "enviado_em": datetime.fromtimestamp(run["submitted_at"]).strftime("%Y-%m-%d %H:%M"),
+                    "enviado_por": run.get("username") or None}
+    quota = sandbox_quota(refresh=True)  # sem permissão para ver a cota, o envio segue normalmente
+    if quota["restantes"] is not None and quota["restantes"] <= 0:
+        raise V1Error("A cota diária do Sandbox acabou: não há envios restantes hoje. "
+                      "Use um resultado anterior ou tente de novo amanhã.")
+    sub = visionone.get_client().sandbox_submit_url(url)
+    if sub.get("task_id"):
+        database.sandbox_run_add(sub["task_id"], sandbox_key(url), username)
+    database.cache_delete(QUOTA_KEY)
+    return {**sub, "reaproveitado": False}
 
 
 def _latest(*dates: str | None) -> str | None:

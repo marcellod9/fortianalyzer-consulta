@@ -118,6 +118,14 @@ def test_v1_sandbox_submit_parses_multistatus():
     assert c.sandbox_submit_url("http://x.com")["task_id"] == "abc-123"
 
 
+def test_v1_sandbox_usage_uses_official_path():
+    def handler(method, url, body, kw):
+        assert method == "GET" and url == "https://api.xdr.trendmicro.com/v3.0/sandbox/submissionUsage"
+        return FakeResp(body={"submissionReserveCount": 100, "submissionRemainingCount": 98})
+    c = VisionOneClient("https://api.xdr.trendmicro.com", "k", session=FakeSession(handler))
+    assert c.sandbox_usage()["submissionRemainingCount"] == 98
+
+
 def test_faz_retries_invalid_tid(monkeypatch):
     monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
     gets = {"n": 0}

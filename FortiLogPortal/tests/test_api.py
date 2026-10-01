@@ -110,3 +110,8 @@ def test_live_logs_store_for_export(client):
     r = client.post("/api/faz/logs/store", json={"logtype": "webfilter", "filter": "", "rows": rows})
     assert r.status_code == 200
     assert client.get(f"/api/export/{r.json()['result_id']}.csv", headers=H).status_code == 200
+
+
+def test_sandbox_quota_route(client):
+    q = client.get("/api/v1/sandbox-quota").json()
+    assert set(q) == {"restantes", "total", "erro"} and q["erro"] is None and q["total"] == 10000

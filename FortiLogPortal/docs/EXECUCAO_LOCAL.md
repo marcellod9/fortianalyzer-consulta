@@ -28,7 +28,8 @@ o usuário do Windows que iniciou o servidor.
    "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
    botão direito (filtrar/excluir) e o duplo clique (detalhes). Nos detalhes, *Consultar reputação*
    mostra o resultado do Vision One na própria janela (site e, se houver, o IP de destino), com a
-   opção *Analisar no Sandbox* para sites/URLs. Em logs sem login, a coluna Origem mostra o nome da
+   opção *Analisar no Sandbox* para sites/URLs (ao lado, a cota do dia; clicar de novo na mesma URL
+   reaproveita a análise das últimas 24 h, com *Analisar de novo* para forçar um envio). Em logs sem login, a coluna Origem mostra o nome da
    máquina (e os detalhes, MAC e sistema) quando o FortiGate tem a identificação de dispositivos ligada.
    *Máquina no Vision One* procura o IP de origem (e o nome da máquina) no inventário do Vision One:
    confira se o agente, o último contato e os alertas batem com o console (*Endpoint Inventory* e

@@ -42,7 +42,7 @@ Quer ver a interface antes de ter os tokens? Coloque `PORTAL_DEMO=true` no `conf
 | **Dashboard** | Sites, usuários e regras mais bloqueados, firewalls com mais eventos (FAZ, últimas N horas); domínios/IPs/URLs maliciosos consultados; totais e histórico diário |
 | **Diagnóstico** | "Não consigo acessar": usuário, IP, MAC ou máquina e o site; procura bloqueios no filtro web, controle de aplicações, filtro DNS e regras do firewall de uma vez e diz o que fazer; *Ver máquina no Vision One* mostra o agente Trend e os alertas abertos |
 | **Logs** | Pesquisa completa: IP/porta de origem e destino, usuário, URL, domínio, regra, política, equipamento, interfaces, ação, período; modo *Tempo real* com atualização automática. Nos detalhes do evento: reputação do destino e *Máquina no Vision One* (agente Trend ativo, isolamento e alertas do Workbench da máquina e do usuário) |
-| **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One, com a categoria do FortiGuard vista nos logs: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações |
+| **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One, com a categoria do FortiGuard vista nos logs: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações; o Sandbox reaproveita a análise da mesma URL das últimas 24 h e mostra a cota do dia |
 | **Correlação** | Um indicador cruzado nas duas ferramentas, com análise consolidada |
 | **Histórico** | Todas as consultas (data, usuário, tipo, termo, resultado), com filtro e exportação |
 | **Configuração** | Teste de conexão das APIs, tempo de resposta, logs internos e limpeza de cache |

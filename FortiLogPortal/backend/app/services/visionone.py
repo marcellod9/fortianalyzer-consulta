@@ -13,6 +13,7 @@ Endpoints usados (somente leitura, exceto o envio opcional ao Sandbox):
   GET  /v3.0/eiqs/endpoints                         procura a máquina no inventário (header TMV1-Query)
   GET  /v3.0/endpointSecurity/endpoints             inventário de endpoints
   GET  /v3.0/endpointSecurity/endpoints/{id}        situação do agente da máquina (status, último contato)
+  GET  /v3.0/sandbox/submissionUsage                cota diária do Sandbox (envios restantes)
   POST /v3.0/sandbox/urls/analyze                   envia URL ao Sandbox (opcional, consome cota)
   GET  /v3.0/sandbox/tasks/{id}                     status da análise
   GET  /v3.0/sandbox/analysisResults/{id}           resultado (riskLevel, threatTypes...)
@@ -158,6 +159,11 @@ class VisionOneClient:
             return self._get(f"/endpointSecurity/endpoints/{agent_guid}")
 
     # ---- Sandbox ----------------------------------------------------------------
+    def sandbox_usage(self) -> dict:
+        """Cota diária do Sandbox (submissionRemainingCount: envios que ainda restam hoje)."""
+        with timed(self.source, "sandbox/submissionUsage"):
+            return self._get("/sandbox/submissionUsage")
+
     def sandbox_submit_url(self, url: str) -> dict:
         with timed(self.source, "sandbox/urls/analyze"):
             resp = self._request("POST", "/sandbox/urls/analyze", json=[{"url": url}])

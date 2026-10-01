@@ -43,6 +43,7 @@ SQLite (database/fortilogportal.db)
 | `settings` | configurações não sensíveis (reservado para preferências futuras) |
 | `temp_data` | informações temporárias: resultados para exportação (1 h) |
 | `ioc_lookup` | resultado de cada consulta de reputação (dashboard Vision One) |
+| `sandbox_run` | envios ao Sandbox (tarefa, URL, quem, quando, status e resultado), para reaproveitar a mesma URL por 24 h; apagados após 7 dias |
 | `meta` | versão do esquema |
 
 Credenciais **não** ficam no banco.
@@ -60,8 +61,9 @@ Credenciais **não** ficam no banco.
 | POST | `/api/faz/diagnose` | `{quem, quem_tipo: auto\|user\|srcname, destino, start, end, adom, devices}`: diagnóstico de acesso |
 | POST | `/api/faz/logs/live` | mesma pesquisa, sem cache, para o tempo real (`?first=true` grava auditoria/histórico) |
 | POST | `/api/faz/logs/store` | guarda as linhas do tempo real para exportar |
-| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox, categoria_fortiguard}` |
-| GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox |
+| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox, sandbox_force, categoria_fortiguard}`; com `sandbox`, reaproveita a análise da mesma URL das últimas 24 h, e `sandbox_force` envia de novo |
+| GET | `/api/v1/sandbox-quota` | cota diária do Sandbox: `{restantes, total, erro}` |
+| GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox (resultado concluído vem do banco local) |
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |
 | GET | `/api/v1/endpoints` | inventário de endpoints |
 | GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |

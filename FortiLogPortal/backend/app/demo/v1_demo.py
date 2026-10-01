@@ -1,6 +1,7 @@
 """Vision One simulado (somente com PORTAL_DEMO=true), no formato das respostas da API v3.0."""
 import hashlib
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from ..services.visionone import V1Error
@@ -53,6 +54,7 @@ _EQ = re.compile(r"(\w+) eq '([^']*)'")
 _NAME = re.compile(r"(NB-ADM|PC-LAB|MacBook|NB)-(\d{2})(\d{3})", re.I)
 _ENDPOINTS: dict[str, dict] = {}
 SUPORTE = {"name": "NB-SUPORTE-12", "ip": "10.10.12.34", "guid": "demo-suporte12"}  # a máquina do alerta WB-DEMO-0002
+_SANDBOX: dict[str, str] = {}  # tarefa do Sandbox -> URL enviada
 
 
 def _endpoint(name: str, ip: str, mac: str, osname: str, seed: int, guid: str | None = None) -> dict:
@@ -160,15 +162,26 @@ class DemoVisionOneClient:
                 "edrSensor": {"productNames": ["XDR Endpoint Sensor"], "connectivity": "disconnected" if off else "connected",
                               "status": "enabled", "lastConnectedDateTime": last, "version": "1.2.0.4567"}}
 
+    def sandbox_usage(self):
+        return {"submissionReserveCount": 10000, "submissionRemainingCount": 10000 - len(_SANDBOX),
+                "submissionCount": len(_SANDBOX), "submissionExemptionCount": 0}
+
     def sandbox_submit_url(self, url):
-        return {"task_id": "demo-task-1", "id": "demo-task-1", "url": url}
+        tid = f"demo-task-{uuid.uuid4().hex[:12]}"
+        _SANDBOX[tid] = url
+        return {"task_id": tid, "id": tid, "url": url}
 
     def sandbox_task(self, task_id):
         return {"id": task_id, "status": "succeeded", "resourceLocation": f"/v3.0/sandbox/analysisResults/{task_id}"}
 
     def sandbox_result(self, result_id):
+        url = _SANDBOX.get(result_id, "")
+        if not any(k in url for k in ("phish", "malware")):
+            return {"id": result_id, "type": "url", "riskLevel": "noRisk", "threatTypes": [], "detectionNames": [],
+                    "analysisCompletionDateTime": _ts(0)}
         return {"id": result_id, "type": "url", "riskLevel": "high", "threatTypes": ["Phishing"],
                 "detectionNames": ["HTML_PHISH.DEMO"], "analysisCompletionDateTime": _ts(0)}
 
     def sandbox_result_iocs(self, result_id):
-        return [{"type": "ip", "ip": "203.0.113.50", "riskLevel": "high"}]
+        url = _SANDBOX.get(result_id, "")
+        return [{"type": "ip", "ip": "203.0.113.50", "riskLevel": "high"}] if any(k in url for k in ("phish", "malware")) else []

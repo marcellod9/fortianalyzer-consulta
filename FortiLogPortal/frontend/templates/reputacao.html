@@ -11,7 +11,8 @@
     <div class="col-md-2">
       <div class="form-check" title="{% if not sandbox_enabled %}Desabilitado: defina V1_SANDBOX_ENABLED=true em config\.env{% else %}Envia a URL para análise dinâmica (consome cota){% endif %}">
         <input class="form-check-input" type="checkbox" name="sandbox" id="sb" {% if not sandbox_enabled %}disabled{% endif %}>
-        <label class="form-check-label small" for="sb">Analisar no Sandbox (URL ou domínio)</label></div></div>
+        <label class="form-check-label small" for="sb">Analisar no Sandbox (URL ou domínio)</label></div>
+      <div class="small text-body-tertiary" id="sbQuota"></div></div>
     <div class="col-md-2"><button class="btn btn-primary w-100" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button></div>
   </div>
   <div class="small text-body-secondary mt-2">Também aceita vários indicadores, um por linha, no campo abaixo.</div>
@@ -30,11 +31,12 @@ document.addEventListener("DOMContentLoaded", () => {
     FLP.renderReputation(target, r);
     return r;
   }
-  // Sandbox concluído: refaz a reputação já com o resultado no veredito
-  const pollSandbox = (taskId, indicator, type) => FLP.sandboxFlow(document.getElementById("sandbox"), indicator, type, taskId, (rep) => {
+  // Sandbox concluído: refaz a reputação já com o resultado no veredito. sb: resposta do envio (pode ser reaproveitado)
+  const pollSandbox = (sb, indicator, type) => FLP.sandboxFlow(document.getElementById("sandbox"), indicator, type, sb.task_id, (rep) => {
     FLP.renderReputation(document.getElementById("result"), rep);
     FLP.exportButtons(document.getElementById("exports"), rep.result_id);
-  });
+  }, {}, sb);
+  {% if sandbox_enabled %}FLP.sandboxQuotaText().then((t) => { document.getElementById("sbQuota").textContent = t; });{% endif %}
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     FLP.busy(btn, true);
@@ -53,7 +55,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const r = await one(d.indicator, d.type, !!d.sandbox, res);
         FLP.exportButtons(document.getElementById("exports"), r.result_id);
         const sb = r.detalhes && r.detalhes.sandbox;
-        if (sb && sb.task_id) pollSandbox(sb.task_id, r.indicador, r.tipo);
+        if (sb && sb.task_id) pollSandbox(sb, r.indicador, r.tipo);
+        else if (d.sandbox && r.erros?.sandbox) FLP.toast(`Sandbox: ${r.erros.sandbox}`, "warning");
       }
     } catch (e) { FLP.toast(e.message, "danger"); }
     finally { FLP.busy(btn, false); }

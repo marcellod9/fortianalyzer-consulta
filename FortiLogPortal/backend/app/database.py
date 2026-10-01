@@ -8,6 +8,7 @@ Tabelas:
   temp_data       informações temporárias (ex.: último resultado para exportar)
   ioc_lookup      resultado consolidado das consultas de reputação (dashboard)
   policy_name     nome das regras por firewall, aprendido dos logs de tráfego
+  sandbox_run     URLs enviadas ao Sandbox e o resultado, para reaproveitar a análise por 24 h
 """
 import json
 import sqlite3
@@ -88,6 +89,18 @@ CREATE TABLE IF NOT EXISTS policy_name (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (device, policyid)
 );
+
+CREATE TABLE IF NOT EXISTS sandbox_run (
+    task_id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    submitted_at REAL NOT NULL,
+    username TEXT,
+    status TEXT NOT NULL,
+    result TEXT,
+    error TEXT,
+    finished_at REAL
+);
+CREATE INDEX IF NOT EXISTS ix_sandbox_url ON sandbox_run(url, submitted_at);
 """
 
 
@@ -257,6 +270,11 @@ def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
                   (key, json.dumps(value, default=str, ensure_ascii=False), now, now + ttl))
 
 
+def cache_delete(key: str) -> None:
+    with connect() as c:
+        c.execute("DELETE FROM cache WHERE key = ?", (key,))
+
+
 def cache_purge(all_entries: bool = False) -> int:
     with connect() as c:
         if all_entries:
@@ -290,3 +308,37 @@ def temp_get(key: str) -> Any | None:
     if not r or r["expires_at"] < time.time():
         return None
     return json.loads(r["value"])
+
+
+# ---- Sandbox: envios e resultados (reaproveitados por 24 h) ------------------------------
+def _sandbox_row(r: sqlite3.Row) -> dict:
+    d = dict(r)
+    d["result"] = json.loads(d["result"]) if d["result"] else None
+    return d
+
+
+def sandbox_run_add(task_id: str, url: str, username: str = "") -> None:
+    with connect() as c:
+        c.execute("DELETE FROM sandbox_run WHERE submitted_at < ?", (time.time() - 7 * 86400,))
+        c.execute("INSERT OR REPLACE INTO sandbox_run(task_id, url, submitted_at, username, status) VALUES (?,?,?,?,?)",
+                  (task_id, url, time.time(), username, "running"))
+
+
+def sandbox_run_finish(task_id: str, status: str, result: dict | None = None, error: str | None = None) -> None:
+    with connect() as c:
+        c.execute("UPDATE sandbox_run SET status = ?, result = ?, error = ?, finished_at = ? WHERE task_id = ?",
+                  (status, json.dumps(result, ensure_ascii=False) if result else None, error, time.time(), task_id))
+
+
+def sandbox_run_get(task_id: str) -> dict | None:
+    with connect() as c:
+        r = c.execute("SELECT * FROM sandbox_run WHERE task_id = ?", (task_id,)).fetchone()
+    return _sandbox_row(r) if r else None
+
+
+def sandbox_runs_for(url: str, since: float) -> list[dict]:
+    """Envios da mesma URL desde 'since' (epoch), do mais novo para o mais antigo."""
+    with connect() as c:
+        rows = c.execute("SELECT * FROM sandbox_run WHERE url = ? AND submitted_at >= ? ORDER BY submitted_at DESC",
+                         (url, since)).fetchall()
+    return [_sandbox_row(r) for r in rows]
