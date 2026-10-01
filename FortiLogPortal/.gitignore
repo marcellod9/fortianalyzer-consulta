@@ -13,3 +13,4 @@ cache/*
 !cache/.gitkeep
 backups/
 .versao-instalada
+*.whl

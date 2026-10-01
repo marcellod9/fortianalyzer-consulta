@@ -81,17 +81,30 @@ if ($latest -and $latest -eq $installed -and -not $Force) {
 }
 
 # 3. Download e extração
-$tmp = Join-Path $env:TEMP ("flp-update-" + [guid]::NewGuid().ToString("N"))
+$tmp = Join-Path $env:TEMP ("flp" + [guid]::NewGuid().ToString("N").Substring(0, 8))   # caminho curto (limite de 260 caracteres do Windows)
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
     $zip = Join-Path $tmp "repo.zip"
     $ref = if ($latest) { $latest } else { $Branch }
     Write-Host "Baixando código ..."
     Invoke-WebRequest -UseBasicParsing "https://github.com/$Repo/archive/$ref.zip" -OutFile $zip
-    Expand-Archive -Path $zip -DestinationPath $tmp -Force
-    $src = Get-ChildItem -Path $tmp -Directory | Where-Object { Test-Path (Join-Path $_.FullName "FortiLogPortal\backend") } | Select-Object -First 1
-    if (-not $src) { throw "Pasta FortiLogPortal não encontrada no pacote baixado." }
-    $src = Join-Path $src.FullName "FortiLogPortal"
+    # Extrai só a pasta FortiLogPortal\ do ZIP, sem a pasta raiz "repo-<commit>" (encurta os caminhos).
+    # Não usa Expand-Archive: no PowerShell 5.1 ele falha e esconde o erro real.
+    $src = Join-Path $tmp "src"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $parts = $entry.FullName -split "/", 2
+            if ($parts.Count -lt 2 -or -not $parts[1].StartsWith("FortiLogPortal/")) { continue }
+            $rel = $parts[1].Substring("FortiLogPortal/".Length)
+            if (-not $rel -or $rel.EndsWith("/")) { continue }
+            $out = Join-Path $src ($rel -replace "/", "\")
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $out) | Out-Null
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $out, $true)
+        }
+    } finally { $archive.Dispose() }
+    if (-not (Test-Path (Join-Path $src "backend"))) { throw "Pasta FortiLogPortal não encontrada no pacote baixado." }
 
     # 4. Backup do código e do banco
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
