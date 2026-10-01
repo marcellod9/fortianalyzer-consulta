@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block heading %}<i class="bi bi-speedometer2"></i> Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body"><div class="label">Total de consultas</div><div class="value" id="s_consultas">-</div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body"><div class="label">Bloqueios encontrados</div><div class="value text-danger" id="s_bloqueios">-</div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body"><div class="label">IOC consultados</div><div class="value" id="s_iocs">-</div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body"><div class="label">Bloqueios no FAZ (<span id="s_horas">24</span>h)</div><div class="value text-danger" id="s_faz">-</div></div></div></div>
+</div>
+
+<div class="d-flex align-items-center gap-2 mb-2">
+  <h2 class="h6 mb-0"><i class="bi bi-hdd-network"></i> Visão FortiAnalyzer</h2>
+  <select id="hours" class="form-select form-select-sm ms-auto" style="width:auto">
+    <option value="1">Última hora</option><option value="24" selected>Últimas 24h</option><option value="72">Últimos 3 dias</option><option value="168">Últimos 7 dias</option></select>
+  <button id="refresh" class="btn btn-sm btn-outline-secondary"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+</div>
+<div id="fazMsg" class="small text-body-secondary mb-2"></div>
+<div class="row g-3 mb-4">
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body"><h6>Sites mais bloqueados</h6><div class="chart-box"><canvas id="c_sites"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body"><h6>Usuários mais bloqueados</h6><div class="chart-box"><canvas id="c_users"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body"><h6>Regras mais acionadas</h6><div class="chart-box"><canvas id="c_rules"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body"><h6>Firewalls com mais eventos</h6><div class="chart-box"><canvas id="c_fws"></canvas></div></div></div></div>
+</div>
+
+<h2 class="h6"><i class="bi bi-shield-exclamation"></i> Visão Vision One <span class="small text-body-secondary fw-normal">(consultas feitas no portal)</span></h2>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><h6>Domínios maliciosos</h6><ul class="list-unstyled top-list small" id="v_dom"></ul></div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><h6>IPs maliciosos</h6><ul class="list-unstyled top-list small" id="v_ip"></ul></div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><h6>URLs de risco elevado</h6><ul class="list-unstyled top-list small" id="v_url"></ul></div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><h6>Últimas consultas</h6><ul class="list-unstyled top-list small" id="v_last"></ul></div></div></div>
+</div>
+
+<h2 class="h6"><i class="bi bi-graph-up"></i> Histórico diário</h2>
+<div class="card"><div class="card-body"><canvas id="c_daily" height="90"></canvas></div></div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}
