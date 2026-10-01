@@ -25,6 +25,30 @@ function Get-EnvValue([string]$name) {
     return ""
 }
 
+# Copia arquivos novos/alterados de $from para $to e remove os que deixaram de existir.
+# Arquivos iguais não são tocados (o update.bat em execução não pode ser reescrito no meio).
+function Sync-Folder([string]$from, [string]$to) {
+    New-Item -ItemType Directory -Force -Path $to | Out-Null
+    $from = (Get-Item -LiteralPath $from).FullName.TrimEnd("\")   # mesmo formato que o Get-ChildItem devolve
+    $to = (Get-Item -LiteralPath $to).FullName.TrimEnd("\")
+    $wanted = @{}
+    foreach ($f in Get-ChildItem -LiteralPath $from -Recurse -File) {
+        $rel = $f.FullName.Substring($from.Length + 1)
+        $wanted[$rel.ToLowerInvariant()] = $true
+        $dest = Join-Path $to $rel
+        if ((Test-Path -LiteralPath $dest) -and
+            (Get-FileHash -LiteralPath $dest).Hash -eq (Get-FileHash -LiteralPath $f.FullName).Hash) { continue }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+        Copy-Item -LiteralPath $f.FullName -Destination $dest -Force
+    }
+    foreach ($f in Get-ChildItem -LiteralPath $to -Recurse -File) {
+        $rel = $f.FullName.Substring($to.Length + 1)
+        if (-not $wanted.ContainsKey($rel.ToLowerInvariant()) -and $rel -notmatch "(^|\\)__pycache__\\") {
+            Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 if (-not $Repo)   { $Repo = Get-EnvValue "UPDATE_REPO" }
 if (-not $Repo)   { $Repo = "marcellod9/fortianalyzer-consulta" }
 if (-not $Branch) { $Branch = Get-EnvValue "UPDATE_BRANCH" }
@@ -79,12 +103,10 @@ try {
     if (Test-Path "database\fortilogportal.db") { Copy-Item "database\fortilogportal.db" (Join-Path $backup "fortilogportal.db") }
     Write-Host "Backup salvo em backups\$stamp"
 
-    # 5. Substitui o código (pastas inteiras, para remover arquivos que deixaram de existir)
+    # 5. Substitui o código arquivo a arquivo. As pastas em si nunca são apagadas: a pasta
+    #    scripts\ está em uso pelo próprio update.bat (o Windows não deixa removê-la).
     foreach ($d in "backend", "frontend", "scripts", "docs", "tests") {
-        if (Test-Path (Join-Path $src $d)) {
-            if (Test-Path $d) { Remove-Item $d -Recurse -Force }
-            Copy-Item (Join-Path $src $d) $d -Recurse -Force
-        }
+        if (Test-Path (Join-Path $src $d)) { Sync-Folder (Join-Path $src $d) (Join-Path $Root $d) }
     }
     foreach ($f in "requirements.txt", "requirements-dev.txt", "README.md", ".gitignore", "config\.env.example") {
         if (Test-Path (Join-Path $src $f)) { Copy-Item (Join-Path $src $f) $f -Force }
