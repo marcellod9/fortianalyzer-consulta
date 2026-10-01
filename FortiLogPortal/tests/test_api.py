@@ -64,3 +64,21 @@ def test_status_never_exposes_tokens(client):
 def test_export_unknown_result(client):
     assert client.get("/api/export/deadbeef.csv").status_code == 404
     assert client.get("/api/export/deadbeef.exe").status_code == 400
+
+
+def test_inventory_falls_back_without_dvmdb_permission(client, monkeypatch):
+    from app.routers import api
+    from app.services.fortianalyzer import FazError
+
+    class NoPerm:
+        def list_adoms(self):
+            raise FazError("/dvmdb/adom: sem permissão para este recurso (perfil do administrador REST)")
+
+        def list_devices(self, adom):
+            raise FazError(f"/dvmdb/adom/{adom}/device: sem permissão para este recurso")
+
+    monkeypatch.setattr(api, "faz", lambda: NoPerm())
+    api.database.cache_purge(all_entries=True)
+    r = client.get("/api/faz/adoms")
+    assert r.status_code == 200 and r.json()[0]["name"] == api.settings.faz_default_adom
+    assert client.get("/api/faz/adoms/root/devices").json() == []

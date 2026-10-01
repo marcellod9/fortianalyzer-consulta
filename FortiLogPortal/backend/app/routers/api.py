@@ -69,9 +69,17 @@ def adoms():
     try:
         data = faz().list_adoms()
     except FazError as e:
-        raise HTTPException(502, str(e))
+        if not _permission_error(e):
+            raise HTTPException(502, str(e))
+        # Admin REST restrito a ADOMs específicas pode não listar /dvmdb/adom; a busca de logs
+        # continua funcionando na ADOM configurada em FAZ_DEFAULT_ADOM.
+        return [{"name": settings.faz_default_adom, "desc": "ADOM padrão (sem permissão para listar ADOMs)"}]
     database.cache_set(key, data, ttl=3600)
     return data
+
+
+def _permission_error(e: FazError) -> bool:
+    return "sem permissão" in str(e) or "No permission" in str(e)
 
 
 @router.get("/faz/adoms/{adom}/devices")
@@ -85,7 +93,9 @@ def devices(adom: str):
     try:
         data = faz().list_devices(adom)
     except FazError as e:
-        raise HTTPException(502, str(e))
+        if not _permission_error(e):
+            raise HTTPException(502, str(e))
+        return []  # sem Device Manager: a busca usa todos os firewalls da ADOM
     database.cache_set(key, data, ttl=3600)
     return data
 

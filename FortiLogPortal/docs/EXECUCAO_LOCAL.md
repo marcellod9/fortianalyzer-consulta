@@ -53,6 +53,7 @@ Mensagens comuns:
 |---|---|
 | FortiAnalyzer recusou o token (HTTP 401/403) | token errado ou seu IP fora dos *Trusted Hosts* |
 | sem permissão para este recurso | perfil do REST API Admin sem *Log View*/*Device Manager* ou ADOM não liberada |
+| `/dvmdb/adom`: sem permissão | o admin REST não pode listar ADOMs/firewalls; o portal usa `FAZ_DEFAULT_ADOM` e "todos os firewalls". Confira se `FAZ_DEFAULT_ADOM` é o nome exato da ADOM liberada, ou dê *Device Manager: Read-Only* ao perfil |
 | Falha de certificado TLS | CA interna não confiável: ajuste `FAZ_VERIFY_TLS`/`V1_VERIFY_TLS` |
 | Vision One HTTP 403 | função da chave sem a permissão daquela fonte |
 | Vision One HTTP 404 | `V1_BASE_URL` de outra região |
