@@ -26,12 +26,12 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("form"), btn = document.getElementById("btn");
-  async function one(indicator, type, sandbox, target) {
-    const r = await FLP.api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox } });
+  async function one(indicator, type, sandbox, target, sandbox_task) {
+    const r = await FLP.api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox, sandbox_task } });
     renderReputation(target, r);
     return r;
   }
-  async function pollSandbox(taskId) {
+  async function pollSandbox(taskId, indicator, type) {
     const box = document.getElementById("sandbox");
     box.innerHTML = `<div class="alert alert-info small"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${FLP.esc(taskId)})...</div>`;
     for (let i = 0; i < 60; i++) {
@@ -42,6 +42,11 @@ document.addEventListener("DOMContentLoaded", () => {
           box.innerHTML = `<div class="alert alert-${FLP.verdictClass(r.risco === "high" ? "Malicioso" : r.risco === "medium" ? "Suspeito" : "")} small">
             <b>Sandbox concluído:</b> risco ${FLP.esc(r.severidade)} · ameaças: ${FLP.esc((r.tipos_ameaca || []).join(", ") || "nenhuma")}
             · detecções: ${FLP.esc((r.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${FLP.esc(r.concluido_em)}</div>`;
+          // refaz a reputação já com o resultado do Sandbox no veredito
+          try {
+            const rep = await one(indicator, type, false, document.getElementById("result"), taskId);
+            FLP.exportButtons(document.getElementById("exports"), rep.result_id);
+          } catch (e) { FLP.toast(e.message, "danger"); }
           return;
         }
         if (s.erro) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(s.erro)}</div>`; return; }
@@ -67,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const r = await one(d.indicator, d.type, !!d.sandbox, res);
         FLP.exportButtons(document.getElementById("exports"), r.result_id);
         const sb = r.detalhes && r.detalhes.sandbox;
-        if (sb && sb.task_id) pollSandbox(sb.task_id);
+        if (sb && sb.task_id) pollSandbox(sb.task_id, r.indicador, r.tipo);
       }
     } catch (e) { FLP.toast(e.message, "danger"); }
     finally { FLP.busy(btn, false); }

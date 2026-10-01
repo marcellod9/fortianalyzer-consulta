@@ -46,3 +46,18 @@ def test_all_sources_failing_is_not_reported_as_clean():
     r = consolidate("ip", "57.144.164.196", {"exceptions": {"items": []}}, {k: v for k, v in errs.items() if k != "exceptions"})
     assert r["reputacao"] == "Inconclusivo"
     assert consolidate("ip", "57.144.164.196", {}, {})["reputacao"] == "Sem registro no Vision One"
+
+
+def test_finished_sandbox_result_drives_the_verdict():
+    from app.services.reputation import consolidate
+    errs = {k: "Vision One HTTP 403" for k in ("suspicious_objects", "exceptions", "detections")}
+    sbr = {"risco": "high", "severidade": "Alta", "tipos_ameaca": ["Web Threat"], "deteccoes": ["VAN_WEB_THREAT.UMXX"],
+           "concluido_em": "2026-10-01T18:30:58Z", "iocs": []}
+    r = consolidate("url", "http://wrs49.winshipway.com/", {"workbench": {"items": []}, "sandbox_result": sbr}, errs)
+    assert r["reputacao"] == "Malicioso" and r["risk_score"] == 90 and "Sandbox Analysis" in r["fontes"]
+    assert r["severidade"] == "Alta" and "VAN_WEB_THREAT.UMXX" in r["tipo_ameaca"] and r["confianca"] == "Alta"
+    clean = consolidate("url", "https://www.globo.com/", {"sandbox_result": {**sbr, "risco": "noRisk", "tipos_ameaca": [],
+                                                                            "deteccoes": []}}, {})
+    assert clean["reputacao"] == "Sem risco detectado (Sandbox)"
+    only_submitted = consolidate("url", "https://x.com/", {"sandbox": {"task_id": "t1"}}, {})
+    assert only_submitted["confianca"] == "Baixa"

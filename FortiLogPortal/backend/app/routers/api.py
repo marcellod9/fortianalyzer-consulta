@@ -116,6 +116,7 @@ class RepQuery(BaseModel):
     indicator: str = Field(min_length=1, max_length=2048)
     type: str = "auto"
     sandbox: bool = False
+    sandbox_task: str | None = Field(default=None, max_length=80)  # tarefa concluída a incluir no veredito
 
 
 def _rep_rows(r: dict) -> list[dict]:
@@ -132,7 +133,8 @@ def _rep_rows(r: dict) -> list[dict]:
 @router.post("/v1/reputation")
 def v1_reputation(q: RepQuery, request: Request):
     with tracked(request, "reputacao", q.indicator, q.model_dump()) as info:
-        r = reputation.lookup(q.indicator, q.type, use_sandbox=q.sandbox, username=who(request))
+        r = reputation.lookup(q.indicator, q.type, use_sandbox=q.sandbox, username=who(request),
+                              sandbox_task=q.sandbox_task)
         info.update(count=1, summary=f"{r['reputacao']} (score {r['risk_score']})")
     r["result_id"] = store_result("reputacao", f"Reputação {r['indicador']}", REP_COLUMNS, _rep_rows(r))
     return r

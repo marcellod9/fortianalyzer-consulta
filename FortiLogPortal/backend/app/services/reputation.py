@@ -119,9 +119,11 @@ def _alert_matches(alert: dict, ioc_type: str, value: str) -> list[dict]:
     return hits
 
 
-def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "") -> dict:
+def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "",
+           sandbox_task: str | None = None) -> dict:
+    """Reputação consolidada. sandbox_task: tarefa do Sandbox já concluída, para entrar no veredito."""
     ioc_type, value = parse_indicator(raw, forced_type)
-    cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}".encode()).hexdigest()
+    cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}".encode()).hexdigest()
     cached = database.cache_get(cache_key)
     if cached:
         cached["cache"] = True
@@ -157,6 +159,14 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
             errors["sandbox"] = "Envio ao Sandbox desabilitado (V1_SANDBOX_ENABLED=false)."
         else:
             run("sandbox", lambda: client.sandbox_submit_url(value))
+
+    if sandbox_task:
+        def finished():
+            st = sandbox_status(sandbox_task)
+            if st.get("status") != "succeeded":
+                raise V1Error(st.get("erro") or f"Análise do Sandbox ainda não concluída ({st.get('status')}).")
+            return st["resultado"]
+        run("sandbox_result", finished)
 
     result = consolidate(ioc_type, value, sources, errors)
     result["periodo"] = {"inicio": start.strftime("%Y-%m-%d %H:%M"), "fim": end.strftime("%Y-%m-%d %H:%M")}
@@ -207,6 +217,7 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
     det = (sources.get("detections") or {}).get("items") or []
     wb = (sources.get("workbench") or {}).get("items") or []
     sb = sources.get("sandbox")
+    sbr = sources.get("sandbox_result")  # resultado do Sandbox já concluído
 
     scores, categorias, tipos, iocs, datas, fontes = [], set(), set(), [], [], []
     severidade_key = None
@@ -247,6 +258,19 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         if SEVERITY_SCORE.get(sev, 0) > RISK_SCORE.get(severidade_key or "", 0):
             severidade_key = sev
 
+    if sbr:
+        fontes.append("Sandbox Analysis")
+        risco = sbr.get("risco")
+        scores.append(RISK_SCORE.get(risco, 0))
+        tipos.update(str(t) for t in (sbr.get("tipos_ameaca") or []))
+        tipos.update(str(d) for d in (sbr.get("deteccoes") or []))
+        datas.append(sbr.get("concluido_em"))
+        for o in (sbr.get("iocs") or [])[:20]:
+            if o.get("valor") and str(o["valor"]).lower() != value.lower():
+                iocs.append({"tipo": o.get("tipo"), "valor": o.get("valor"), "origem": "Sandbox"})
+        if RISK_SCORE.get(risco, 0) > max(RISK_SCORE.get(severidade_key or "", 0), SEVERITY_SCORE.get(severidade_key or "", 0)):
+            severidade_key = risco
+
     risk = max(scores) if scores else 0
     core = ("suspicious_objects", "exceptions", "detections", "workbench")
     failed = [k for k in core if k in errors]
@@ -257,6 +281,8 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         reputacao = "Malicioso"
     elif risk >= 50:
         reputacao = "Suspeito"
+    elif sbr and sbr.get("risco") == "noRisk" and risk <= RISK_SCORE["noRisk"]:
+        reputacao = "Sem risco detectado (Sandbox)"
     elif risk > 0:
         reputacao = "Baixo risco"
     elif len(failed) == len(core):
@@ -266,7 +292,7 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
     else:
         reputacao = "Sem registro no Vision One"
 
-    if so or sb:
+    if so or sbr:
         confianca = "Alta"
     elif wb or det:
         confianca = "Média"
@@ -285,6 +311,9 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
             "O Vision One recusou todas as consultas. Veja em \"Fontes que falharam\" o motivo (geralmente permissão "
             "da função da chave de API) e repita depois de corrigir.",
             "Enquanto isso, não trate o indicador como seguro."],
+        "Sem risco detectado (Sandbox)": [
+            "O Sandbox do Vision One analisou a URL e não encontrou comportamento malicioso.",
+            "Se for liberar, confirme também a necessidade de negócio."],
         "Inconclusivo": [
             "Algumas fontes do Vision One não responderam (veja \"Fontes que falharam\"); as que responderam não "
             "têm registro do indicador. O resultado pode estar incompleto."],
@@ -319,6 +348,7 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
                          "criado": i["alert"].get("createdDateTime"), "link": i["alert"].get("workbenchLink")}
                         for i in wb],
             "sandbox": sb,
+            "sandbox_resultado": sbr,
         },
         "erros": errors,
         "consultado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
