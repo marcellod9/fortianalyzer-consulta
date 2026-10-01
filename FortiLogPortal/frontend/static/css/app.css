@@ -71,3 +71,11 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 .fb-chip .fb-op { min-width: 2.6rem; font-weight: 700; }
 .fb-chip.fb-neg .input-group-text, .fb-chip.fb-neg .fb-op { color: var(--bs-danger); border-color: var(--bs-danger); }
 .flp-ctx { position: fixed; z-index: 2000; display: block; }
+.cc-menu { width: 280px; }
+.cc-list { max-height: 360px; overflow: auto; }
+.cc-item { padding: .2rem .25rem; border-radius: .3rem; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+.cc-item[draggable="true"] { cursor: grab; }
+.cc-item:hover { background: var(--bs-tertiary-bg); }
+.cc-item.cc-dragging { opacity: .4; }
+.cc-item.cc-over-top { border-top-color: var(--bs-primary); }
+.cc-item.cc-over-bottom { border-bottom-color: var(--bs-primary); }

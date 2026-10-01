@@ -156,19 +156,108 @@ const FLP = (() => {
     return [...map.values()];
   }
 
-  function rowHtml(r, i, grouped) {
-    const sub = [r.aplicacao, r.servico].filter(Boolean).join(" · ");
-    const who = r.usuario
-      ? `<div class="fw-semibold">${esc(r.usuario)}</div><div class="small text-body-secondary">${esc(r.ip_origem)}</div>`
-      : `<div class="fw-semibold">${esc(r.ip_origem)}</div><div class="small text-body-secondary">sem login</div>`;
-    return `<tr data-i="${i}" class="sit-${situationOf(r)}">
-      <td data-col="situacao">${situationBadge(r)}</td>
-      <td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>
-      ${grouped ? `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` : ""}
-      <td data-col="quem">${who}</td>
-      <td class="cell-dest" data-col="destino"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
-        <div class="small text-body-secondary cell-trunc" title="${esc(sub)}">${esc(sub)}</div></td>
-      <td class="cell-motivo" data-col="motivo">${esc(r.motivo)}</td></tr>`;
+  // ---- colunas da lista (o usuário escolhe quais e em que ordem, como no FortiAnalyzer) ----
+  const txt = (k, cls = "") => (r) => `<td class="${cls}" title="${esc(r[k])}">${esc(r[k])}</td>`;
+  const LOG_COLUMNS = [
+    { key: "situacao", label: "Situação", on: true, td: (r) => `<td>${situationBadge(r)}</td>` },
+    { key: "quando", label: "Quando", on: true, td: (r) => `<td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>` },
+    { key: "vezes", label: "Vezes", on: true, grouped: true,
+      td: (r) => `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` },
+    { key: "quem", label: "Origem (usuário e IP)", head: "Origem", on: true, td: (r) => `<td>${r.usuario
+        ? `<div class="fw-semibold">${esc(r.usuario)}</div><div class="small text-body-secondary">${esc(r.ip_origem)}</div>`
+        : `<div class="fw-semibold">${esc(r.ip_origem)}</div><div class="small text-body-secondary">sem login</div>`}</td>` },
+    { key: "destino", label: "Destino (site/IP e serviço)", head: "Destino", on: true, td: (r) => {
+        const sub = [r.aplicacao, r.servico].filter(Boolean).join(" · ");
+        return `<td class="cell-dest"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
+          <div class="small text-body-secondary cell-trunc" title="${esc(sub)}">${esc(sub)}</div></td>`; } },
+    { key: "motivo", label: "O que aconteceu", on: true, td: (r) => `<td class="cell-motivo">${esc(r.motivo)}</td>` },
+    { key: "firewall", label: "Firewall", td: txt("firewall", "text-nowrap") },
+    { key: "usuario", label: "Usuário", td: txt("usuario", "cell-trunc") },
+    { key: "ip_origem", label: "IP de origem", td: txt("ip_origem", "text-nowrap") },
+    { key: "porta_origem", label: "Porta de origem", td: txt("porta_origem") },
+    { key: "ip_destino", label: "IP de destino", td: txt("ip_destino", "text-nowrap") },
+    { key: "servico", label: "Porta / serviço", td: txt("servico", "text-nowrap") },
+    { key: "site", label: "Site", td: txt("site", "cell-trunc") },
+    { key: "url", label: "URL", td: txt("url", "cell-trunc") },
+    { key: "aplicacao", label: "Aplicação", td: txt("aplicacao", "cell-trunc") },
+    { key: "categoria", label: "Categoria", td: txt("categoria", "cell-trunc") },
+    { key: "regra", label: "Regra", td: txt("regra", "cell-trunc") },
+    { key: "politica", label: "Perfil de segurança", td: txt("politica", "cell-trunc") },
+    { key: "interface_entrada", label: "Interface de entrada", td: txt("interface_entrada", "text-nowrap") },
+    { key: "interface_saida", label: "Interface de saída", td: txt("interface_saida", "text-nowrap") },
+    { key: "acao_original", label: "Ação registrada", td: txt("acao_original", "text-nowrap") },
+    { key: "tipo_log", label: "Tipo de log", td: txt("tipo_log", "text-nowrap") },
+  ];
+  const COL_BY_KEY = Object.fromEntries(LOG_COLUMNS.map((c) => [c.key, c]));
+  const COLS_STORE = "flp-colunas";
+  const defaultCols = () => LOG_COLUMNS.map((c) => ({ key: c.key, on: !!c.on }));
+  function loadCols() {
+    let saved = [];
+    try { saved = JSON.parse(store.get(COLS_STORE, "[]")).filter((c) => COL_BY_KEY[c.key]); } catch { /* padrão */ }
+    if (!saved.length) return defaultCols();
+    const known = new Set(saved.map((c) => c.key));
+    return [...saved, ...defaultCols().filter((c) => !known.has(c.key)).map((c) => ({ ...c, on: false }))];  // colunas novas entram ocultas
+  }
+  const saveCols = (cols) => store.set(COLS_STORE, JSON.stringify(cols));
+
+  // Botão "Colunas": buscar, marcar/desmarcar, arrastar para mudar a posição, voltar ao padrão
+  function columnChooser(box, getCols, setCols) {
+    box.innerHTML = `<div class="dropdown">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Escolher e ordenar colunas"><i class="bi bi-gear"></i> Colunas</button>
+        <div class="dropdown-menu dropdown-menu-end p-2 cc-menu">
+          <input type="search" class="form-control form-control-sm mb-1 cc-search" placeholder="Buscar coluna">
+          <div class="small text-body-secondary mb-1"><i class="bi bi-arrows-move"></i> Arraste para mudar a ordem</div>
+          <div class="cc-list"></div>
+          <div class="border-top mt-1 pt-1">
+            <div class="form-check"><input class="form-check-input cc-all" type="checkbox" id="${box.id}-ccall"><label class="form-check-label small" for="${box.id}-ccall">Marcar todas</label></div>
+            <button type="button" class="btn btn-link btn-sm p-0 cc-reset"><i class="bi bi-arrow-counterclockwise"></i> Voltar ao padrão</button>
+          </div></div></div>`;
+    const list = box.querySelector(".cc-list"), search = box.querySelector(".cc-search"), all = box.querySelector(".cc-all");
+    let dragKey = null;
+    const draw = () => {
+      const cols = getCols(), t = search.value.trim().toLowerCase();
+      list.innerHTML = cols.filter((c) => !t || COL_BY_KEY[c.key].label.toLowerCase().includes(t)).map((c) => `
+        <div class="cc-item d-flex align-items-center gap-2" draggable="${t ? "false" : "true"}" data-key="${c.key}">
+          <i class="bi bi-grip-vertical text-body-secondary cc-grip"></i>
+          <input class="form-check-input mt-0" type="checkbox" id="${box.id}-cc-${c.key}" ${c.on ? "checked" : ""}>
+          <label class="form-check-label small flex-grow-1" for="${box.id}-cc-${c.key}">${esc(COL_BY_KEY[c.key].label)}</label></div>`).join("");
+      all.checked = cols.every((c) => c.on);
+    };
+    list.addEventListener("change", (e) => {
+      const key = e.target.closest(".cc-item")?.dataset.key; if (!key) return;
+      const cols = getCols().map((c) => c.key === key ? { ...c, on: e.target.checked } : c);
+      if (!cols.some((c) => c.on)) { e.target.checked = true; return; }  // pelo menos uma coluna
+      setCols(cols); draw();
+    });
+    all.addEventListener("change", () => { setCols(getCols().map((c) => ({ ...c, on: all.checked || c.key === "situacao" }))); draw(); });
+    box.querySelector(".cc-reset").addEventListener("click", () => { setCols(defaultCols()); draw(); });
+    search.addEventListener("input", draw);
+    search.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    list.addEventListener("dragstart", (e) => {
+      const it = e.target.closest(".cc-item"); if (!it) return;
+      dragKey = it.dataset.key; it.classList.add("cc-dragging"); e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", dragKey);
+    });
+    list.addEventListener("dragover", (e) => {
+      const it = e.target.closest(".cc-item"); if (!it || !dragKey || it.dataset.key === dragKey) return;
+      e.preventDefault();
+      const after = e.clientY > it.getBoundingClientRect().top + it.offsetHeight / 2;
+      list.querySelectorAll(".cc-over-top,.cc-over-bottom").forEach((x) => x.classList.remove("cc-over-top", "cc-over-bottom"));
+      it.classList.add(after ? "cc-over-bottom" : "cc-over-top");
+    });
+    list.addEventListener("drop", (e) => {
+      const it = e.target.closest(".cc-item"); if (!it || !dragKey) return;
+      e.preventDefault();
+      const after = it.classList.contains("cc-over-bottom");
+      const cols = getCols(), moving = cols.find((c) => c.key === dragKey);
+      const rest = cols.filter((c) => c.key !== dragKey);
+      const idx = rest.findIndex((c) => c.key === it.dataset.key) + (after ? 1 : 0);
+      rest.splice(idx, 0, moving);
+      setCols(rest); draw();
+    });
+    list.addEventListener("dragend", () => { dragKey = null; draw(); });
+    box.querySelector("[data-bs-toggle]").addEventListener("shown.bs.dropdown", () => { search.value = ""; draw(); search.focus(); });
+    draw();
   }
 
   // Valores de cada coluna que podem virar filtro (botão direito)
@@ -183,6 +272,13 @@ const FLP = (() => {
     }
     if (col === "situacao") push("action", lg.action || r.acao_original);
     if (col === "motivo") { push("policy", lg.policyid ?? "", r.regra); push("category", r.categoria); }
+    const simple = { usuario: "user", ip_origem: "srcip", porta_origem: "srcport", ip_destino: "dstip", site: "hostname",
+                     url: "url", aplicacao: "app", categoria: "category", politica: "profile", interface_entrada: "srcintf",
+                     interface_saida: "dstintf", acao_original: "action" };
+    if (simple[col]) push(simple[col], r[col]);
+    if (col === "firewall") push("devname", r.firewall);
+    if (col === "servico") push("dstport", r.porta_destino, r.servico);
+    if (col === "regra") push("policy", lg.policyid ?? "", r.regra);
     return out;
   }
 
@@ -237,6 +333,7 @@ const FLP = (() => {
         <input type="search" class="form-control form-control-sm log-search" placeholder="Filtrar nesta lista (usuário, site, IP...)">
         <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="agr-${container.id}" ${state.agrupar ? "checked" : ""}>
           <label class="form-check-label small" for="agr-${container.id}" title="Junta eventos iguais (mesmo usuário, destino e resultado) em uma linha">Agrupar repetidos</label></div>
+        <span class="cc-box" id="cc-${container.id}"></span>
         <span class="small text-body-secondary ms-auto"><i class="bi bi-mouse"></i> Dois cliques: detalhes e o que fazer${opts.onFilter ? " · Botão direito: filtrar ou excluir o valor" : ""}</span>
       </div>
       <div class="table-responsive"><table class="table table-sm table-hover table-logs align-middle mb-0"><thead></thead><tbody></tbody></table></div>
@@ -249,9 +346,11 @@ const FLP = (() => {
       if (t) list = list.filter((r) => [r.usuario, r.ip_origem, r.ip_destino, r.site, r.url, r.aplicacao, r.regra, r.motivo, r.categoria]
         .some((v) => String(v || "").toLowerCase().includes(t)));
       shown = state.agrupar ? groupRows(list) : list;
-      thead.innerHTML = `<tr><th>Situação</th><th>Quando</th>${state.agrupar ? '<th class="text-center">Vezes</th>' : ""}<th>Quem</th><th>Destino</th><th>O que aconteceu</th></tr>`;
-      tbody.innerHTML = shown.length ? shown.map((r, i) => rowHtml(r, i, state.agrupar)).join("")
-        : `<tr><td colspan="6" class="text-center text-body-secondary py-3">Nenhum evento com este filtro.</td></tr>`;
+      const cols = loadCols().filter((c) => c.on && (!COL_BY_KEY[c.key].grouped || state.agrupar)).map((c) => COL_BY_KEY[c.key]);
+      thead.innerHTML = `<tr>${cols.map((c) => `<th class="text-nowrap">${esc(c.head || c.label)}</th>`).join("")}</tr>`;
+      tbody.innerHTML = shown.length ? shown.map((r, i) => `<tr data-i="${i}" class="sit-${situationOf(r)}">${cols.map((c) =>
+          c.td(r).replace(/^<td/, `<td data-col="${c.key}"`)).join("")}</tr>`).join("")
+        : `<tr><td colspan="${cols.length}" class="text-center text-body-secondary py-3">Nenhum evento com este filtro.</td></tr>`;
       container.querySelector(".log-count").textContent = state.agrupar
         ? `${shown.length} linha(s) agrupando ${list.length} evento(s)` : `${shown.length} evento(s)`;
     };
@@ -260,6 +359,7 @@ const FLP = (() => {
     container.querySelector(`#agr-${container.id}`).addEventListener("change", (e) => {
       state.agrupar = e.target.checked; store.set("flp-agrupar", state.agrupar ? "1" : "0"); draw();
     });
+    columnChooser(container.querySelector(`#cc-${container.id}`), loadCols, (cols) => { saveCols(cols); draw(); });
     let selected = null;
     tbody.addEventListener("click", (e) => {
       const tr = e.target.closest("tr[data-i]"); if (!tr) return;
@@ -319,7 +419,7 @@ const FLP = (() => {
       ${r.orientacao ? `<div class="card border-primary mb-3"><div class="card-body py-2">
         <div class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer</div><div>${esc(r.orientacao)}</div></div></div>` : ""}
       <div class="row g-2">
-        <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-person"></i> Quem</div><div class="card-body py-2">
+        <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-person"></i> Origem</div><div class="card-body py-2">
           ${fieldList([["Usuário", r.usuario || "(sem login)"], ["IP de origem", r.ip_origem], ["Porta de origem", r.porta_origem], ["Entrou pela interface", r.interface_entrada]])}</div></div></div>
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-globe"></i> Destino</div><div class="card-body py-2">
           ${fieldList([["Site", r.site], ["URL", r.url], ["IP de destino", r.ip_destino], ["Porta / serviço", r.servico || r.porta_destino],
