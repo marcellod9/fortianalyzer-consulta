@@ -14,14 +14,20 @@ def client():
         yield c
 
 
-@pytest.mark.parametrize("path", ["/", "/bloqueios", "/logs", "/reputacao", "/correlacao", "/historico", "/configuracao"])
+@pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/correlacao", "/historico", "/configuracao"])
 def test_pages_render(client, path):
     r = client.get(path)
     assert r.status_code == 200 and "FortiLogPortal" in r.text
 
 
-def test_blocks_search_and_export(client):
-    r = client.post("/api/faz/blocks", json={**PERIOD, "user": "joao.silva", "limit": 50}, headers=H)
+def test_old_blocks_page_redirects_to_logs(client):
+    r = client.get("/bloqueios", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/logs"
+
+
+def test_blocked_logs_search_and_export(client):
+    r = client.post("/api/faz/logs", json={**PERIOD, "logtype": "webfilter", "only_blocked": True, "limit": 50,
+                                         "filters": [{"field": "user", "op": "=", "value": "joao.silva"}]}, headers=H)
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["rows"] and all(x["bloqueado"] for x in d["rows"])
@@ -45,7 +51,7 @@ def test_reputation_correlation_history_dashboard(client):
     c = client.post("/api/correlation", json={"indicator": "malware-test.example"}, headers=H)
     assert c.status_code == 200 and any("MALICIOSO" in line for line in c.json()["analise"])
     hist = client.get("/api/history").json()
-    assert {"bloqueios", "logs", "reputacao", "correlacao"} <= {h["query_type"] for h in hist}
+    assert {"logs", "reputacao", "correlacao"} <= {h["query_type"] for h in hist}
     assert any(h["username"] == "teste.sustentacao" for h in hist)
     assert client.get("/api/export/history.xlsx").content.startswith(b"PK")
     dash = client.get("/api/dashboard/faz?hours=24").json()

@@ -2,6 +2,7 @@
 import hashlib
 
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
@@ -25,7 +26,6 @@ ASSET_V = _asset_version()
 
 PAGES = [
     ("/", "dashboard", "Dashboard", "speedometer2"),
-    ("/bloqueios", "bloqueios", "Bloqueios", "slash-circle"),
     ("/logs", "logs", "Logs", "list-ul"),
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
     ("/correlacao", "correlacao", "Correlação", "diagram-3"),
@@ -45,6 +45,12 @@ def _page(name: str):
         return templates.TemplateResponse(request, f"{name}.html", _ctx(request, name))
     view.__name__ = f"page_{name}"
     return view
+
+
+@router.get("/bloqueios", include_in_schema=False)
+def old_blocks_page():
+    """A aba Bloqueios foi incorporada à aba Logs (Somente bloqueios / filtro Bloqueados)."""
+    return RedirectResponse("/logs", status_code=307)
 
 
 for path, name, _title, _icon in PAGES:

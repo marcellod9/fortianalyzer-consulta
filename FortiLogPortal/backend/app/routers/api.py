@@ -11,7 +11,7 @@ from ..services import correlation, dashboard, explain, export, reputation
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
-from ..services.logsearch import blocked_search, run_query, store_result
+from ..services.logsearch import run_query, store_result
 from ..services.visionone import V1Error, default_window
 from ..services.visionone import get_client as v1
 from .common import tracked, who
@@ -108,18 +108,6 @@ def search_logs(q: LogQuery, request: Request, cache: bool = True):
                     summary=f"{res['returned']} de {res['total']} eventos ({res['bloqueados']} bloqueados)")
     res["result_id"] = store_result("logs", f"Logs {LOGTYPES[q.logtype]}", explain.COLUMNS, res["rows"],
                                     {"Filtro": res["filter"] or "(nenhum)", "Período": f"{q.start} a {q.end}"})
-    return res
-
-
-@router.post("/faz/blocks")
-def search_blocks(q: LogQuery, request: Request):
-    term = q.model_copy(update={"logtype": "webfilter", "only_blocked": False, "action": None}).filter_expr() \
-        or "(todos os bloqueios)"
-    with tracked(request, "bloqueios", term, q.model_dump(mode="json")) as info:
-        res = blocked_search(q)
-        info.update(count=res["returned"], blocked=res["returned"], summary=f"{res['returned']} bloqueios")
-    res["result_id"] = store_result("bloqueios", "Bloqueios de navegação e firewall", explain.COLUMNS, res["rows"],
-                                    {"Pesquisa": term, "Período": f"{q.start} a {q.end}"})
     return res
 
 

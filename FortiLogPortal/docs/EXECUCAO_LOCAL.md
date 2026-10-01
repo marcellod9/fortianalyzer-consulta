@@ -20,10 +20,10 @@ o usuário do Windows que iniciou o servidor.
 
 1. **Configuração**: clique em *Testar FortiAnalyzer* e *Testar Vision One*. Os dois devem
    responder "Conectado".
-2. **Bloqueios**: pesquise um usuário que reclamou de bloqueio, nas últimas 24h. Confira se a
-   explicação mostra a política e a regra corretas comparando com o FortiAnalyzer.
-3. **Logs**: pesquise por IP de origem + porta de destino; depois por regra (número) e por
-   interface. Clique numa linha para ver todos os campos.
+2. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
+   "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
+   botão direito (filtrar/excluir) e o duplo clique (detalhes).
+3. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
 4. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
    esteja na lista de Suspicious Objects do tenant.
 5. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.

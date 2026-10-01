@@ -56,7 +56,6 @@ Credenciais **não** ficam no banco.
 | GET | `/api/faz/logtypes` | tipos de log |
 | GET | `/api/faz/adoms`, `/api/faz/adoms/{adom}/devices` | inventário |
 | POST | `/api/faz/logs` | pesquisa de logs (`LogQuery`) |
-| POST | `/api/faz/blocks` | bloqueios em vários tipos de log |
 | POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox}` |
 | GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox |
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |

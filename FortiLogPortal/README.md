@@ -40,7 +40,6 @@ Quer ver a interface antes de ter os tokens? Coloque `PORTAL_DEMO=true` no `conf
 | Tela | O que faz |
 |---|---|
 | **Dashboard** | Sites, usuários e regras mais bloqueados, firewalls com mais eventos (FAZ, últimas N horas); domínios/IPs/URLs maliciosos consultados; totais e histórico diário |
-| **Bloqueios** | "Por que foi bloqueado?": busca por usuário, IP ou site em filtro web, firewall, aplicações e DNS ao mesmo tempo, com explicação |
 | **Logs** | Pesquisa completa: IP/porta de origem e destino, usuário, URL, domínio, regra, política, equipamento, interfaces, ação, período |
 | **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações |
 | **Correlação** | Um indicador cruzado nas duas ferramentas, com análise consolidada |
