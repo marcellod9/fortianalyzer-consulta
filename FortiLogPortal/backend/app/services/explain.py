@@ -196,6 +196,31 @@ def guidance(row: dict, log: dict, logtype: str) -> str:
     return "Acesso bloqueado pelo firewall. Encaminhe ao N2 com os dados deste evento."
 
 
+def rule_label(policy_id, policy_name: str) -> str:
+    if policy_id in (None, ""):
+        return policy_name or ""
+    if str(policy_id) == "0":
+        return "0 - bloqueio implícito (nenhuma regra permitiu)"
+    return f"{policy_id} - {policy_name}" if policy_name else str(policy_id)
+
+
+def policy_key(row: dict) -> tuple[str, str] | None:
+    """(firewall/vdom, nº da regra) de uma linha normalizada; None se não houver regra numerada."""
+    lg = row.get("log_original") or {}
+    pid = lg.get("policyid")
+    dev = lg.get("devname") or lg.get("devid")
+    if pid in (None, "") or str(pid) == "0" or not dev:
+        return None
+    return (f"{dev}/{lg.get('vd') or ''}", str(pid))
+
+
+def set_policy_name(row: dict, name: str) -> None:
+    """Completa o nome da regra em logs que só trazem o número (filtro web, DNS, aplicações...)."""
+    lg = row.get("log_original") or {}
+    row["regra"] = rule_label(lg.get("policyid"), name)
+    row["explicacao"] = explain(row)
+
+
 def normalize(log: dict, logtype: str) -> dict:
     """Converte uma linha do FAZ nas colunas exibidas no portal."""
     user = log.get("user") or log.get("unauthuser") or ""
@@ -205,12 +230,7 @@ def normalize(log: dict, logtype: str) -> dict:
         url = f"{site}{url}"
     policy_id = log.get("policyid")
     policy_name = log.get("policyname") or ""
-    if policy_id in (None, ""):
-        regra = policy_name
-    elif str(policy_id) == "0":
-        regra = "0 - bloqueio implícito (nenhuma regra permitiu)"
-    else:
-        regra = f"{policy_id} - {policy_name}" if policy_name else str(policy_id)
+    regra = rule_label(policy_id, policy_name)
     blocked = is_blocked(log)
     row = {
         "data_hora": _when(log),

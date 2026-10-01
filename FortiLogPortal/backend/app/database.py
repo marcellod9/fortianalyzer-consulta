@@ -7,6 +7,7 @@ Tabelas:
   settings        configurações não sensíveis editáveis pela interface
   temp_data       informações temporárias (ex.: último resultado para exportar)
   ioc_lookup      resultado consolidado das consultas de reputação (dashboard)
+  policy_name     nome das regras por firewall, aprendido dos logs de tráfego
 """
 import json
 import sqlite3
@@ -79,6 +80,14 @@ CREATE TABLE IF NOT EXISTS ioc_lookup (
     source TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_ioc_ts ON ioc_lookup(ts);
+
+CREATE TABLE IF NOT EXISTS policy_name (
+    device TEXT NOT NULL,
+    policyid TEXT NOT NULL,
+    name TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (device, policyid)
+);
 """
 
 
@@ -208,6 +217,27 @@ def integration_stats() -> list[dict]:
             "SELECT source, COUNT(*) chamadas, ROUND(AVG(duration_ms)) media_ms, MAX(duration_ms) max_ms,"
             " SUM(CASE WHEN level='ERROR' THEN 1 ELSE 0 END) falhas FROM app_log"
             " WHERE duration_ms IS NOT NULL GROUP BY source")]
+
+
+# ---- nomes das regras ---------------------------------------------------------
+def policy_names_get(keys: set[tuple[str, str]]) -> dict[tuple[str, str], str]:
+    if not keys:
+        return {}
+    with connect() as c:
+        out = {}
+        for dev, pid in keys:
+            r = c.execute("SELECT name FROM policy_name WHERE device = ? AND policyid = ?", (dev, pid)).fetchone()
+            if r:
+                out[(dev, pid)] = r["name"]
+        return out
+
+
+def policy_names_set(items: dict[tuple[str, str], str]) -> None:
+    if not items:
+        return
+    with connect() as c:
+        c.executemany("INSERT OR REPLACE INTO policy_name(device, policyid, name, updated_at) VALUES (?,?,?,?)",
+                      [(d, p, n, now_iso()) for (d, p), n in items.items()])
 
 
 # ---- cache ------------------------------------------------------------------

@@ -8,13 +8,13 @@ from datetime import datetime
 from .. import database
 from ..config import settings
 from . import explain
-from .faz_filters import BLOCK_ACTIONS, LogQuery
+from .faz_filters import BLOCK_ACTIONS, SAFE_NAME, LogQuery
 from .fortianalyzer import get_client
 
 
 def _cache_key(q: LogQuery) -> str:
     raw = json.dumps(q.model_dump(mode="json"), sort_keys=True)
-    return "faz2:" + hashlib.sha1(raw.encode()).hexdigest()
+    return "faz3:" + hashlib.sha1(raw.encode()).hexdigest()
 
 
 def run_query(q: LogQuery, use_cache: bool = True) -> dict:
@@ -29,12 +29,55 @@ def run_query(q: LogQuery, use_cache: bool = True) -> dict:
         filter_expr=q.filter_expr(), devices=q.devices, limit=q.limit,
     )
     rows = [explain.normalize(lg, q.logtype) for lg in res["logs"]]
+    fill_policy_names(rows, q)
     out = {
         "total": res["total"], "returned": len(rows), "filter": q.filter_expr(), "logtype": q.logtype,
         "bloqueados": sum(1 for r in rows if r["bloqueado"]), "rows": rows, "cache": False,
     }
     database.cache_set(key, out)
     return out
+
+
+POLICY_LOOKUPS_PER_QUERY = 5
+
+
+def fill_policy_names(rows: list[dict], q: LogQuery) -> None:
+    """Logs de filtro web/DNS/aplicação trazem só o número da regra (policyid), sem o nome.
+
+    O nome vem dos logs de tráfego: cada nome visto fica salvo por firewall/vdom no banco e,
+    para regras ainda desconhecidas, faz uma busca curta de tráfego (1 linha) por regra.
+    """
+    learned = {}
+    for r in rows:
+        key = explain.policy_key(r)
+        name = (r.get("log_original") or {}).get("policyname")
+        if key and name:
+            learned[key] = name
+    database.policy_names_set(learned)
+    missing = {k for r in rows if (k := explain.policy_key(r)) and not (r.get("log_original") or {}).get("policyname")}
+    if not missing:
+        return
+    names = database.policy_names_get(missing)
+    unknown = sorted(missing - names.keys())[:POLICY_LOOKUPS_PER_QUERY]
+    if unknown and q.logtype != "traffic":
+        found = {}
+        for dev_vd, pid in unknown:
+            devname = dev_vd.split("/", 1)[0]
+            flt = f"policyid={pid}" + (f' and devname="{devname}"' if SAFE_NAME.match(devname) else "")
+            try:
+                res = get_client().search_logs(adom=q.adom, logtype="traffic", start=q.faz_time("start"),
+                                               end=q.faz_time("end"), filter_expr=flt, devices=q.devices, limit=1)
+            except Exception:
+                continue  # sem o nome, a coluna mostra só o número
+            name = next((lg.get("policyname") for lg in res["logs"] if lg.get("policyname")), None)
+            if name:
+                found[(dev_vd, pid)] = name
+        database.policy_names_set(found)
+        names.update(found)
+    for r in rows:
+        key = explain.policy_key(r)
+        if key in names and not (r.get("log_original") or {}).get("policyname"):
+            explain.set_policy_name(r, names[key])
 
 
 def blocked_search(base: LogQuery, logtypes=("webfilter", "traffic", "app-ctrl", "dns")) -> dict:
