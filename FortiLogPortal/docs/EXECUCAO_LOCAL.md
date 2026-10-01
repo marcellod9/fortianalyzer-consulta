@@ -20,20 +20,25 @@ o usuário do Windows que iniciou o servidor.
 
 1. **Configuração**: clique em *Testar FortiAnalyzer* e *Testar Vision One*. Os dois devem
    responder "Conectado".
-2. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
+2. **Diagnóstico**: informe o login de quem reclamou e o site (ex.: `facebook.com`) e clique em
+   *Diagnosticar*. Confira se o resultado (bloqueado, permitido ou sem eventos) e a camada que
+   bloqueou batem com o FortiAnalyzer. Teste também por IP, por MAC e por nome da máquina.
+3. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
    "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
    botão direito (filtrar/excluir) e o duplo clique (detalhes). Nos detalhes, *Consultar reputação*
    mostra o resultado do Vision One na própria janela (site e, se houver, o IP de destino), com a
-   opção *Analisar no Sandbox* para sites/URLs.
-3. **Logs em tempo real**: clique em *Tempo real* (escolha 5 s, 10 s, 30 s ou 1 min). A lista
+   opção *Analisar no Sandbox* para sites/URLs. Em logs sem login, a coluna Origem mostra o nome da
+   máquina (e os detalhes, MAC e sistema) quando o FortiGate tem a identificação de dispositivos ligada.
+4. **Logs em tempo real**: clique em *Tempo real* (escolha 5 s, 10 s, 30 s ou 1 min). A lista
    começa com os últimos 5 minutos e os eventos novos entram no topo, destacados. Gere um acesso
    bloqueado de teste e veja se ele aparece. *Pausar* para a atualização e libera a exportação.
-4. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
-5. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
-   esteja na lista de Suspicious Objects do tenant.
-6. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
-7. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
-8. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
+5. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
+6. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
+   esteja na lista de Suspicious Objects do tenant. Para sites acessados nas últimas 24 h, a linha
+   *FortiGuard* mostra a categoria do site e ela entra no veredito (ex.: Phishing vira Malicioso).
+7. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
+8. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
+9. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
 
 ## Dicas de desempenho
 

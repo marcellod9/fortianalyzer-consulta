@@ -73,3 +73,11 @@ def test_added_filters_include_and_exclude():
                 {"field": "user", "op": "or", "value": "a"}):
         with pytest.raises(Exception):
             LogQuery(start=datetime(2026, 10, 1, 10), end=datetime(2026, 10, 1, 11), filters=[bad])
+
+
+def test_machine_name_and_mac_filters():
+    q = LogQuery(logtype="traffic", filters=[{"field": "srcmac", "op": "~", "value": "00-1A-2B-3C-4D-5E"},
+                                             {"field": "srcname", "op": "~", "value": "NB-ADM"}], **P)
+    assert q.filter_expr() == 'srcmac="00:1a:2b:3c:4d:5e" and srcname~"NB-ADM"'
+    with pytest.raises(ValidationError):
+        LogQuery(logtype="traffic", filters=[{"field": "srcmac", "value": "00:1a:2b"}], **P)

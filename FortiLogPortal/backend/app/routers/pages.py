@@ -26,6 +26,7 @@ ASSET_V = _asset_version()
 
 PAGES = [
     ("/", "dashboard", "Dashboard", "speedometer2"),
+    ("/diagnostico", "diagnostico", "Diagnóstico", "clipboard2-pulse"),
     ("/logs", "logs", "Logs", "list-ul"),
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
     ("/correlacao", "correlacao", "Correlação", "diagram-3"),

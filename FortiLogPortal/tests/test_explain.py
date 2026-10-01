@@ -55,3 +55,13 @@ def test_situation_service_and_guidance_for_n1():
     ok = explain.normalize({"action": "accept", "policyid": 1, "hostname": "a.com"}, "traffic")
     assert ok["situacao"] == "permitido" and "Somente bloqueios" in ok["orientacao"]
     assert ok["log_original"]["hostname"] == "a.com"
+
+
+def test_machine_fields_from_device_identification():
+    row = explain.normalize({"srcip": "10.1.2.3", "srcname": "NB-ADM-01", "srcmac": "00:1a:2b:3c:4d:5e", "osname": "Windows",
+                             "osversion": "11", "devtype": "Windows PC", "srchwvendor": "Dell", "action": "accept"}, "traffic")
+    assert (row["maquina"], row["mac"], row["sistema"]) == ("NB-ADM-01", "00:1a:2b:3c:4d:5e", "Windows 11")
+    assert (row["tipo_dispositivo"], row["fabricante"]) == ("Windows PC", "Dell")
+    assert row["explicacao"]["Usuário"] == "(não autenticado) 10.1.2.3 - máquina NB-ADM-01"
+    plain = explain.normalize({"srcip": "10.1.2.3", "action": "accept"}, "traffic")
+    assert plain["maquina"] == plain["mac"] == plain["sistema"] == ""

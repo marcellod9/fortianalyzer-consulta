@@ -11,9 +11,10 @@ FastAPI (backend/app)
         ├── fortianalyzer.py   cliente JSON-RPC (requests)         ──HTTPS──▶ FortiAnalyzer
         ├── faz_filters.py     validação + expressão de filtro
         ├── logsearch.py       busca normalizada, bloqueios em paralelo, cache
+        ├── diagnosis.py       diagnóstico de acesso (4 tipos de log de uma vez + conclusão para o N1)
         ├── explain.py         normalização e linguagem simples
         ├── visionone.py       cliente REST v3.0 (requests)       ──HTTPS──▶ Vision One
-        ├── reputation.py      reputação consolidada de IP/domínio/URL
+        ├── reputation.py      reputação consolidada de IP/domínio/URL (Vision One + categoria do FortiGuard)
         ├── correlation.py     FortiAnalyzer x Vision One
         ├── dashboard.py       agregações do dashboard
         ├── export.py          CSV / XLSX (openpyxl) / PDF (reportlab)
@@ -56,9 +57,10 @@ Credenciais **não** ficam no banco.
 | GET | `/api/faz/logtypes` | tipos de log |
 | GET | `/api/faz/adoms`, `/api/faz/adoms/{adom}/devices` | inventário |
 | POST | `/api/faz/logs` | pesquisa de logs (`LogQuery`) |
+| POST | `/api/faz/diagnose` | `{quem, quem_tipo: auto\|user\|srcname, destino, start, end, adom, devices}`: diagnóstico de acesso |
 | POST | `/api/faz/logs/live` | mesma pesquisa, sem cache, para o tempo real (`?first=true` grava auditoria/histórico) |
 | POST | `/api/faz/logs/store` | guarda as linhas do tempo real para exportar |
-| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox}` |
+| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox, categoria_fortiguard}` |
 | GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox |
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |
 | GET | `/api/v1/endpoints` | inventário de endpoints |

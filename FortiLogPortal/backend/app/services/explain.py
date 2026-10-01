@@ -260,6 +260,12 @@ def normalize(log: dict, logtype: str) -> dict:
         "tipo_log": logtype,
         "situacao": situation(log),
         "servico": port_label(log.get("dstport")),
+        # máquina de origem: o FortiGate grava esses campos quando a identificação de dispositivos está ligada
+        "maquina": log.get("srcname") or "",
+        "mac": log.get("srcmac") or log.get("mastersrcmac") or "",
+        "sistema": " ".join(str(v) for v in (log.get("osname"), log.get("osversion") or log.get("srcswversion")) if v),
+        "tipo_dispositivo": log.get("devtype") or "",
+        "fabricante": log.get("srchwvendor") or "",
     }
     dest = site or row["ip_destino"]
     if not site and row["porta_destino"]:
@@ -278,7 +284,8 @@ def explain(row: dict) -> dict:
         acesso = f"{acesso}:{row['porta_destino']}"
     resultado = {"bloqueado": "Bloqueado", "falha": "Permitido, mas a conexão falhou"}.get(row.get("situacao"), "Permitido")
     return {
-        "Usuário": row.get("usuario") or f"(não autenticado) {row.get('ip_origem') or ''}".strip(),
+        "Usuário": row.get("usuario") or (f"(não autenticado) {row.get('ip_origem') or ''}".strip()
+                                           + (f" - máquina {row['maquina']}" if row.get("maquina") else "")),
         "Acesso": acesso,
         "Resultado": resultado,
         "Motivo": row.get("motivo") or "-",
@@ -291,7 +298,7 @@ def explain(row: dict) -> dict:
 COLUMNS = [
     ("data_hora", "Data e hora"), ("firewall", "Firewall"), ("ip_origem", "IP origem"),
     ("ip_destino", "IP destino"), ("porta_origem", "Porta origem"), ("porta_destino", "Porta destino"),
-    ("usuario", "Usuário"), ("site", "Site"), ("url", "URL"), ("aplicacao", "Aplicação"),
+    ("usuario", "Usuário"), ("maquina", "Máquina"), ("mac", "MAC"), ("site", "Site"), ("url", "URL"), ("aplicacao", "Aplicação"),
     ("categoria", "Categoria"), ("regra", "Regra"), ("politica", "Política"),
     ("interface_entrada", "Interface entrada"), ("interface_saida", "Interface saída"),
     ("acao", "Ação"), ("motivo", "Motivo"),

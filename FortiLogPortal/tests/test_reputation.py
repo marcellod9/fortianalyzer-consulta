@@ -24,7 +24,7 @@ def test_lookup_consolidates_demo_sources():
     assert r["reputacao"] == "Malicioso" and r["risk_score"] >= 80
     assert {"Suspicious Objects", "Workbench"} <= set(r["fontes"])
     assert r["confianca"] == "Alta" and r["erros"] == {}
-    clean = reputation.lookup("google.com")
+    clean = reputation.lookup("google.com", fortiguard_from_faz=False)
     assert clean["reputacao"] == "Sem registro no Vision One" and clean["risk_score"] == 0
     trusted = reputation.lookup("maristabrasil.org")
     assert trusted["reputacao"] == "Confiável (exceção)"
@@ -81,3 +81,45 @@ def test_sandbox_rerun_reuses_previous_sources(monkeypatch):
     assert calls["det"] == 1
     r = reputation.lookup("http://reuso.example/a", "url", sandbox_task="t-1")
     assert calls["det"] == 1 and "Sandbox Analysis" in r["fontes"]
+
+
+def _fg(cat):
+    return {"categoria": cat, "origem": "evento", "visto_em": None, "erro": None}
+
+
+def test_fortiguard_category_completes_the_verdict():
+    from app.services.reputation import consolidate
+    clean = {k: {"items": []} for k in ("suspicious_objects", "exceptions", "detections", "workbench")}
+    r = consolidate("domain", "matt.mercadolivre.com.br", clean, {}, _fg("Shopping"))
+    assert r["reputacao"] == "Sem risco conhecido" and r["confianca"] == "Média" and r["risk_score"] == 0
+    assert r["fontes"] == ["Vision One (sem ocorrências)", "FortiGuard (categoria do site)"]
+    assert "Shopping (FortiGuard)" in r["categoria"]
+    assert r["fortiguard"]["risco"] is None and "Shopping" in r["recomendacoes"][0]
+    r = consolidate("domain", "login-banco.example", clean, {}, _fg("Phishing"))
+    assert r["reputacao"] == "Malicioso" and r["risk_score"] == 90 and r["confianca"] == "Alta"
+    assert r["fortiguard"]["risco"] == "alto" and "Phishing" in r["recomendacoes"][0] and r["severidade"] == "Alta"
+    r = consolidate("domain", "novo.example", clean, {}, _fg("Newly Registered Domain"))
+    assert r["reputacao"] == "Suspeito" and r["severidade"] == "Média" and r["fortiguard"]["risco"] == "medio"
+    r = consolidate("domain", "x.example", clean, {}, _fg("Unrated"))
+    assert r["reputacao"] == "Sem registro no Vision One" and "não classificou" in r["recomendacoes"][-1]
+    # sem resposta do Vision One a categoria aparece, mas não vira "sem risco"
+    errs = {k: "Vision One HTTP 403" for k in clean}
+    r = consolidate("domain", "matt.mercadolivre.com.br", {}, errs, _fg("Shopping"))
+    assert r["reputacao"] == "Não foi possível consultar" and r["fortiguard"]["categoria"] == "Shopping"
+    assert r["fontes"] == ["Vision One não respondeu", "FortiGuard (categoria do site)"]
+    # exceção cadastrada pela organização continua valendo
+    exc = {**clean, "exceptions": {"items": [{"type": "domain", "domain": "a.org"}]}}
+    assert consolidate("domain", "a.org", exc, {}, _fg("Phishing"))["reputacao"] == "Confiável (exceção)"
+
+
+def test_lookup_takes_fortiguard_category_from_event_or_logs():
+    from_logs = reputation.lookup("google.com")
+    assert from_logs["reputacao"] == "Sem risco conhecido"
+    assert from_logs["fortiguard"]["categoria"] == "Search Engines and Portals"
+    assert from_logs["fortiguard"]["origem"] == "logs" and from_logs["fortiguard"]["visto_em"]
+    from_event = reputation.lookup("matt.mercadolivre.com.br", fortiguard_category="Shopping")
+    assert from_event["fortiguard"]["origem"] == "evento" and from_event["reputacao"] == "Sem risco conhecido"
+    assert reputation.lookup("malware-test.example")["fortiguard"]["categoria"] == "Malicious Websites"
+    assert reputation.lookup("8.8.8.8")["fortiguard"] is None
+    with pytest.raises(reputation.IndicatorError):
+        reputation.lookup("x.com", fortiguard_category='a"b')

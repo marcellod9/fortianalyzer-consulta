@@ -44,9 +44,12 @@ def correlate(raw: str, start: datetime, end: datetime, adom: str | None = None,
     except Exception as e:
         out["erros"]["fortianalyzer"] = str(e)
 
-    # Vision One: reputação
+    # Vision One: reputação, com a categoria do FortiGuard vista nos eventos acima (sem nova busca no FAZ)
+    fg = next((lg["catdesc"] for r in (out["fortianalyzer"] or {}).get("eventos", [])
+               if (lg := r.get("log_original") or {}).get("catdesc")), None)
     try:
-        out["visionone"] = reputation.lookup(value, ioc_type, username=username)
+        out["visionone"] = reputation.lookup(value, ioc_type, username=username, fortiguard_category=fg,
+                                             fortiguard_from_faz=False)
     except (V1Error, reputation.IndicatorError) as e:
         out["erros"]["visionone"] = str(e)
 

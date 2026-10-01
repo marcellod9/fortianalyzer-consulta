@@ -40,8 +40,9 @@ Quer ver a interface antes de ter os tokens? Coloque `PORTAL_DEMO=true` no `conf
 | Tela | O que faz |
 |---|---|
 | **Dashboard** | Sites, usuários e regras mais bloqueados, firewalls com mais eventos (FAZ, últimas N horas); domínios/IPs/URLs maliciosos consultados; totais e histórico diário |
+| **Diagnóstico** | "Não consigo acessar": usuário, IP, MAC ou máquina e o site; procura bloqueios no filtro web, controle de aplicações, filtro DNS e regras do firewall de uma vez e diz o que fazer |
 | **Logs** | Pesquisa completa: IP/porta de origem e destino, usuário, URL, domínio, regra, política, equipamento, interfaces, ação, período; modo *Tempo real* com atualização automática |
-| **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações |
+| **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One, com a categoria do FortiGuard vista nos logs: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações |
 | **Correlação** | Um indicador cruzado nas duas ferramentas, com análise consolidada |
 | **Histórico** | Todas as consultas (data, usuário, tipo, termo, resultado), com filtro e exportação |
 | **Configuração** | Teste de conexão das APIs, tempo de resposta, logs internos e limpeza de cache |
@@ -57,7 +58,7 @@ FortiLogPortal
 │       ├── config.py   leitura de config\.env (sem segredos no código)
 │       ├── database.py SQLite: histórico, logs internos, cache, configurações, temporários
 │       ├── routers\    API REST (/api/...) e páginas
-│       ├── services\   FortiAnalyzer, Vision One, reputação, correlação, explicação, exportação, dashboard
+│       ├── services\   FortiAnalyzer, Vision One, diagnóstico, reputação, correlação, explicação, exportação, dashboard
 │       └── demo\       dados simulados (somente PORTAL_DEMO=true)
 ├── frontend\           templates Jinja2, Bootstrap 5, JavaScript (bibliotecas locais, sem CDN)
 ├── config\             .env.example (modelo) e .env (seu, fora do git)

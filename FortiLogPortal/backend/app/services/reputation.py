@@ -9,13 +9,18 @@ para IP/domínio/URL avulso. A reputação é montada com as fontes oficiais:
   4. Workbench              alertas que citam o indicador
   5. Sandbox (opcional)     análise dinâmica de URL, quando V1_SANDBOX_ENABLED=true
 
+Para sites e URLs, a categoria do FortiGuard (campo catdesc dos logs do filtro web/DNS)
+complementa o veredito: o Vision One só conhece o que foi registrado ou detectado no tenant,
+e o FortiGuard classifica qualquer site (ex.: Phishing, Malicious Websites, Shopping).
+
 Cada fonte é consultada de forma independente: se uma falhar (ex.: falta de
 permissão na chave), as demais continuam e o erro é mostrado na tela.
 """
 import hashlib
 import ipaddress
 import re
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from .. import database
@@ -29,6 +34,19 @@ URL_RE = re.compile(r"^[^\s\"'\\<>]{1,2048}$")
 RISK_SCORE = {"high": 90, "medium": 65, "low": 35, "noRisk": 5}
 SEVERITY_SCORE = {"critical": 95, "high": 80, "medium": 55, "low": 30}
 SEVERITY_PT = {"critical": "Crítica", "high": "Alta", "medium": "Média", "low": "Baixa", "noRisk": "Nenhuma"}
+
+# Categorias do grupo "Security Risk" do FortiGuard, como aparecem no campo catdesc dos logs: score e explicação
+FORTIGUARD_RISK = {
+    "malicious websites": (90, "site malicioso"),
+    "phishing": (90, "phishing (roubo de senha ou dados)"),
+    "spam urls": (70, "endereço usado em spam"),
+    "newly registered domain": (60, "domínio registrado há pouco tempo"),
+    "newly observed domain": (55, "domínio visto pela primeira vez há pouco tempo"),
+    "dynamic dns": (55, "DNS dinâmico, muito usado em ataques"),
+}
+FORTIGUARD_UNRATED = {"unrated", "not rated", "unknown"}
+FORTIGUARD_LOOKBACK = timedelta(hours=24)
+SAFE_CATEGORY = re.compile(r"^[^\x00-\x1f\"\\<>]{1,128}$")
 
 
 class IndicatorError(ValueError):
@@ -119,15 +137,68 @@ def _alert_matches(alert: dict, ioc_type: str, value: str) -> list[dict]:
     return hits
 
 
+def fortiguard_from_logs(host: str) -> dict:
+    """Categoria do FortiGuard do site no log mais recente do filtro web (ou DNS) das últimas 24 h."""
+    from .faz_filters import LogQuery  # import local: evita ciclo reputação <-> pesquisa de logs
+    from .fortianalyzer import FazError
+    from .logsearch import run_query
+
+    key = f"fg:{host}"
+    hit = database.cache_get(key)
+    if hit is not None:
+        return hit
+    end = datetime.now().replace(microsecond=0)
+    out = {"categoria": None, "origem": "logs", "visto_em": None, "erro": None}
+    try:
+        for lt in ("webfilter", "dns"):
+            res = run_query(LogQuery(logtype=lt, hostname=host, start=end - FORTIGUARD_LOOKBACK, end=end, limit=20),
+                            save_cache=False, policy_names=False)
+            row = next((r for r in res["rows"] if (r.get("log_original") or {}).get("catdesc")), None)
+            if row:
+                out.update(categoria=row["log_original"]["catdesc"], visto_em=row["data_hora"],
+                           tipo_log=lt, firewall=row.get("firewall"))
+                break
+    except (FazError, ValueError) as e:  # sem FortiAnalyzer a reputação continua só com o Vision One
+        out["erro"] = str(e)
+        return out
+    database.cache_set(key, out)
+    return out
+
+
+def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool) -> dict | None:
+    if ioc_type == "ip":
+        return None
+    if category:
+        return {"categoria": category, "origem": "evento", "visto_em": None, "erro": None}
+    if not from_faz:
+        return None
+    return fortiguard_from_logs(host_of(value) if ioc_type == "url" else value)
+
+
 def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "",
-           sandbox_task: str | None = None) -> dict:
-    """Reputação consolidada. sandbox_task: tarefa do Sandbox já concluída, para entrar no veredito."""
+           sandbox_task: str | None = None, fortiguard_category: str | None = None,
+           fortiguard_from_faz: bool = True) -> dict:
+    """Reputação consolidada. sandbox_task: tarefa do Sandbox já concluída, para entrar no veredito.
+
+    fortiguard_category: categoria do site já conhecida (ex.: do log aberto na tela). Sem ela, e com
+    fortiguard_from_faz, o portal procura a categoria nos logs do FortiAnalyzer das últimas 24 h.
+    """
     ioc_type, value = parse_indicator(raw, forced_type)
-    cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}".encode()).hexdigest()
+    if fortiguard_category is not None:
+        fortiguard_category = fortiguard_category.strip() or None
+        if fortiguard_category and not SAFE_CATEGORY.match(fortiguard_category):
+            raise IndicatorError("Categoria do FortiGuard inválida.")
+    cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}:"
+                                      f"{fortiguard_category}:{fortiguard_from_faz}".encode()).hexdigest()
     cached = database.cache_get(cache_key)
     if cached:
         cached["cache"] = True
         return cached
+
+    # a categoria do FortiGuard vem do FortiAnalyzer: busca em paralelo com as consultas ao Vision One
+    pool = ThreadPoolExecutor(max_workers=1)
+    fg_future = pool.submit(_fortiguard, ioc_type, value, fortiguard_category, fortiguard_from_faz)
+    pool.shutdown(wait=False)
 
     client = visionone.get_client()
     start, end = visionone.default_window()
@@ -181,7 +252,11 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
             return st["resultado"]
         run("sandbox_result", finished)
 
-    result = consolidate(ioc_type, value, sources, errors)
+    try:
+        fortiguard = fg_future.result()
+    except Exception as e:  # pragma: no cover - a categoria é complemento, nunca derruba a consulta
+        fortiguard = {"categoria": None, "origem": "logs", "visto_em": None, "erro": str(e)}
+    result = consolidate(ioc_type, value, sources, errors, fortiguard)
     result["periodo"] = {"inicio": start.strftime("%Y-%m-%d %H:%M"), "fim": end.strftime("%Y-%m-%d %H:%M")}
     result["cache"] = False
     if not errors:
@@ -224,7 +299,16 @@ def _latest(*dates: str | None) -> str | None:
     return max(ds) if ds else None
 
 
-def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
+def _sources_label(fontes: list[str], v1_failed: bool) -> list[str]:
+    """Fontes do veredito; deixa claro quando o Vision One não teve ocorrência (ou não respondeu)."""
+    if any(not f.startswith("FortiGuard") for f in fontes):
+        return fontes
+    if v1_failed:
+        return ["Vision One não respondeu", *fontes] if fontes else ["Nenhuma fonte respondeu"]
+    return ["Vision One (sem ocorrências)", *fontes]
+
+
+def consolidate(ioc_type: str, value: str, sources: dict, errors: dict, fortiguard: dict | None = None) -> dict:
     so = (sources.get("suspicious_objects") or {}).get("items") or []
     exc = (sources.get("exceptions") or {}).get("items") or []
     det = (sources.get("detections") or {}).get("items") or []
@@ -284,6 +368,18 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         if RISK_SCORE.get(risco, 0) > max(RISK_SCORE.get(severidade_key or "", 0), SEVERITY_SCORE.get(severidade_key or "", 0)):
             severidade_key = risco
 
+    fg_cat = (fortiguard or {}).get("categoria")
+    fg_risk = FORTIGUARD_RISK.get((fg_cat or "").strip().lower())
+    fg_unrated = (fg_cat or "").strip().lower() in FORTIGUARD_UNRATED
+    if fg_cat:
+        fontes.append("FortiGuard (categoria do site)")
+        categorias.add(f"{fg_cat} (FortiGuard)")
+        if fg_risk:
+            scores.append(fg_risk[0])
+            tipos.add(f"FortiGuard: {fg_cat} ({fg_risk[1]})")
+            if fg_risk[0] > max(RISK_SCORE.get(severidade_key or "", 0), SEVERITY_SCORE.get(severidade_key or "", 0)):
+                severidade_key = "high" if fg_risk[0] >= 80 else "medium"
+
     risk = max(scores) if scores else 0
     core = ("suspicious_objects", "exceptions", "detections", "workbench")
     failed = [k for k in core if k in errors]
@@ -298,6 +394,8 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         reputacao = "Sem risco detectado (Sandbox)"
     elif risk > 0:
         reputacao = "Baixo risco"
+    elif fg_cat and not fg_unrated and not failed:
+        reputacao = "Sem risco conhecido"   # V1 respondeu sem registro e o FortiGuard tem uma categoria comum
     elif len(failed) == len(core):
         reputacao = "Não foi possível consultar"   # nenhuma fonte respondeu: não é "sem registro"
     elif failed:
@@ -305,9 +403,9 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
     else:
         reputacao = "Sem registro no Vision One"
 
-    if so or sbr:
+    if so or sbr or (fg_risk and fg_risk[0] >= 80):
         confianca = "Alta"
-    elif wb or det:
+    elif wb or det or fg_cat:
         confianca = "Média"
     else:
         confianca = "Baixa"
@@ -330,10 +428,20 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         "Inconclusivo": [
             "Algumas fontes do Vision One não responderam (veja \"Fontes que falharam\"); as que responderam não "
             "têm registro do indicador. O resultado pode estar incompleto."],
+        "Sem risco conhecido": [
+            f"O FortiGuard classifica o site como \"{fg_cat}\" e o Vision One não tem registro de ameaça ligada a ele.",
+            "Se o acesso foi bloqueado, o motivo é a política de navegação para essa categoria, não um risco de "
+            "segurança: siga o processo de liberação com a justificativa do usuário."],
         "Sem registro no Vision One": [
             "Nenhum registro no Vision One no período consultado. Isso não garante que o recurso seja seguro.",
             "Se precisar de mais certeza para uma URL, use a análise no Sandbox (quando habilitada)."],
     }[reputacao]
+    recomendacoes = list(recomendacoes)
+    if fg_risk and reputacao in ("Malicioso", "Suspeito"):
+        recomendacoes.insert(0, f"O FortiGuard classifica o site como \"{fg_cat}\" ({fg_risk[1]}).")
+    elif fg_unrated:
+        recomendacoes.append("O FortiGuard ainda não classificou este site. Sites novos ou pouco conhecidos merecem "
+                             "cuidado; se precisar de mais certeza, use a análise no Sandbox.")
 
     return {
         "indicador": value,
@@ -346,8 +454,10 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         "iocs_relacionados": iocs,
         "ultima_analise": _latest(*datas) or "-",
         "confianca": confianca,
-        "fontes": fontes or (["Nenhuma fonte respondeu"] if len(failed) == len(core) else ["Vision One (sem ocorrências)"]),
+        "fontes": _sources_label(fontes, len(failed) == len(core)),
         "recomendacoes": recomendacoes,
+        "fortiguard": ({**fortiguard, "risco": ("alto" if fg_risk[0] >= 80 else "medio") if fg_risk else None,
+                        "nao_classificado": fg_unrated} if fortiguard else None),
         "detalhes": {
             "suspicious_objects": [{"tipo": o.get("type"), "valor": object_value(o), "risco": o.get("riskLevel"),
                                     "acao": o.get("scanAction"), "descricao": o.get("description"),

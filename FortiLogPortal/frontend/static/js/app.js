@@ -97,7 +97,7 @@ const FLP = (() => {
   }
 
   function verdictClass(rep) {
-    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Confiável (exceção)": "success", "Não foi possível consultar": "warning", "Inconclusivo": "warning", "Sem risco detectado (Sandbox)": "success" }[rep] || "secondary";
+    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Confiável (exceção)": "success", "Não foi possível consultar": "warning", "Inconclusivo": "warning", "Sem risco detectado (Sandbox)": "success", "Sem risco conhecido": "success" }[rep] || "secondary";
   }
   function riskColor(score) {
     if (score >= 80) return "var(--bs-danger)";
@@ -150,6 +150,11 @@ const FLP = (() => {
   };
   const listDestination = (r) => r.site || r.ip_destino || destinationOf(r);  // a porta aparece na linha de baixo
   const whoOf = (r) => r.usuario || r.ip_origem || "";
+  const LOGTYPE_LABEL = { traffic: "Regras do firewall (tráfego)", webfilter: "Filtro web", "app-ctrl": "Controle de aplicações",
+                          dns: "Filtro DNS", ips: "IPS", virus: "Antivírus", ssl: "Inspeção SSL", event: "Eventos do sistema" };
+  const logtypeLabel = (t) => LOGTYPE_LABEL[t] || t || "";
+  // máquina de origem (identificação de dispositivos do FortiGate): nome, MAC e sistema
+  const machineOf = (r) => r.maquina || "";
 
   function groupRows(rows) {
     const map = new Map();
@@ -167,9 +172,11 @@ const FLP = (() => {
     { key: "quando", label: "Data/Hora", on: true, td: (r) => `<td class="text-nowrap" title="${esc(r.data_hora)}">${esc(shortTime(r.data_hora))}</td>` },
     { key: "vezes", label: "Vezes", on: true, grouped: true,
       td: (r) => `<td class="text-center">${r.vezes > 1 ? `<span class="badge rounded-pill text-bg-secondary">${r.vezes}x</span>` : ""}</td>` },
-    { key: "quem", label: "Origem (usuário e IP)", head: "Origem", on: true, td: (r) => `<td>${r.usuario
-        ? `<div class="fw-semibold">${esc(r.usuario)}</div><div class="small text-body-secondary">${esc(r.ip_origem)}</div>`
-        : `<div class="fw-semibold">${esc(r.ip_origem)}</div><div class="small text-body-secondary">sem login</div>`}</td>` },
+    { key: "quem", label: "Origem (usuário, IP e máquina)", head: "Origem", on: true, td: (r) => {
+        const sub = r.usuario ? [r.ip_origem, machineOf(r)] : [machineOf(r), "sem login"];
+        const subText = sub.filter(Boolean).join(" · ");
+        return `<td class="cell-dest"><div class="fw-semibold cell-trunc">${esc(r.usuario || r.ip_origem)}</div>
+          <div class="small text-body-secondary cell-trunc" title="${esc(subText)}">${esc(subText)}</div></td>`; } },
     { key: "destino", label: "Destino (site/IP e serviço)", head: "Destino", on: true, td: (r) => {
         const sub = [r.aplicacao, r.servico].filter(Boolean).join(" · ");
         return `<td class="cell-dest"><div class="fw-semibold cell-trunc" title="${esc(destinationOf(r))}">${esc(listDestination(r))}</div>
@@ -194,7 +201,10 @@ const FLP = (() => {
     { key: "interface_entrada", label: "Interface de entrada", td: txt("interface_entrada", "text-nowrap") },
     { key: "interface_saida", label: "Interface de saída", td: txt("interface_saida", "text-nowrap") },
     { key: "acao_original", label: "Ação registrada", td: txt("acao_original", "text-nowrap") },
-    { key: "tipo_log", label: "Tipo de log", td: txt("tipo_log", "text-nowrap") },
+    { key: "tipo_log", label: "Tipo de log", td: (r) => `<td class="text-nowrap">${esc(logtypeLabel(r.tipo_log))}</td>` },
+    { key: "maquina", label: "Máquina (nome)", td: txt("maquina", "cell-trunc") },
+    { key: "mac", label: "MAC de origem", td: txt("mac", "text-nowrap") },
+    { key: "sistema", label: "Sistema da máquina", td: txt("sistema", "cell-trunc") },
   ];
   const COL_BY_KEY = Object.fromEntries(LOG_COLUMNS.map((c) => [c.key, c]));
   const COLS_STORE = "flp-colunas";
@@ -316,7 +326,7 @@ const FLP = (() => {
     const lg = r.log_original || {};
     const out = [];
     const push = (field, value, text) => { if (value !== undefined && value !== null && value !== "") out.push({ field, value: String(value), text: text ?? value }); };
-    if (col === "quem") { push("user", r.usuario); push("srcip", r.ip_origem); }
+    if (col === "quem") { push("user", r.usuario); push("srcip", r.ip_origem); push("srcname", r.maquina); push("srcmac", r.mac); }
     if (col === "destino") {
       push("hostname", r.site); push("dstip", r.ip_destino); push("dstport", r.porta_destino, r.servico || r.porta_destino);
       push("app", r.aplicacao);
@@ -325,7 +335,8 @@ const FLP = (() => {
     if (col === "motivo") { push("policy", lg.policyid ?? "", r.regra); push("category", r.categoria); }
     const simple = { usuario: "user", ip_origem: "srcip", porta_origem: "srcport", ip_destino: "dstip", site: "hostname",
                      url: "url", aplicacao: "app", categoria: "category", politica: "profile", interface_entrada: "srcintf",
-                     interface_saida: "dstintf", acao_original: "action" };
+                     interface_saida: "dstintf", acao_original: "action",
+                     maquina: "srcname", mac: "srcmac" };
     if (simple[col]) push(simple[col], r[col]);
     if (col === "firewall") push("devname", r.firewall);
     if (col === "servico") push("dstport", r.porta_destino, r.servico);
@@ -395,7 +406,7 @@ const FLP = (() => {
     const draw = () => {
       const t = state.texto.toLowerCase();
       let list = rows.filter((r) => state.filtro === "todos" || situationOf(r) === state.filtro);
-      if (t) list = list.filter((r) => [r.usuario, r.ip_origem, r.ip_destino, r.site, r.url, r.aplicacao, r.regra, r.motivo, r.categoria]
+      if (t) list = list.filter((r) => [r.usuario, r.ip_origem, r.maquina, r.mac, r.ip_destino, r.site, r.url, r.aplicacao, r.regra, r.motivo, r.categoria]
         .some((v) => String(v || "").toLowerCase().includes(t)));
       shown = state.agrupar ? groupRows(list) : list;
       const cols = loadCols().filter((c) => c.on && (!COL_BY_KEY[c.key].grouped || state.agrupar)).map((c) => COL_BY_KEY[c.key]);
@@ -411,6 +422,8 @@ const FLP = (() => {
     const syncChips = () => {
       container.querySelectorAll("[data-n]").forEach((el) => { el.textContent = el.dataset.n === "todos" ? rows.length : n[el.dataset.n]; });
       container.querySelector(`label[for="sit-${container.id}-falha"]`).classList.toggle("d-none", !n.falha);
+      // lista só com bloqueios (diagnóstico): "Permitidos (0)" daria a impressão de que não houve acesso liberado
+      container.querySelector(`label[for="sit-${container.id}-permitido"]`).classList.toggle("d-none", !!opts.blockedOnly && !n.permitido);
     };
     container.querySelectorAll(`input[name="sit-${container.id}"]`).forEach((r) => r.addEventListener("change", () => { state.filtro = container.dataset.sit = r.value; draw(); }));
     container.querySelector(".log-search").addEventListener("input", (e) => { state.texto = e.target.value.trim(); draw(); });
@@ -454,7 +467,7 @@ const FLP = (() => {
     const s = SITUATION[situationOf(r)].label;
     return [
       `Data/hora: ${r.data_hora}${r.vezes > 1 ? ` (${r.vezes} ocorrências desde ${r.primeiro})` : ""}`,
-      `Usuário: ${r.usuario || "(sem login)"} - IP ${r.ip_origem || "-"}`,
+      `Usuário: ${r.usuario || "(sem login)"} - IP ${r.ip_origem || "-"}${r.maquina ? ` - máquina ${r.maquina}` : ""}${r.mac ? ` (MAC ${r.mac})` : ""}`,
       `Destino: ${destinationOf(r)}${r.url && r.url !== r.site ? ` (${readableUrl(r.url)})` : ""}`,
       `Porta/serviço: ${r.servico || r.porta_destino || "-"}${r.aplicacao ? ` - Aplicação: ${r.aplicacao}` : ""}`,
       `Resultado: ${s}`,
@@ -489,12 +502,14 @@ const FLP = (() => {
         <div class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer</div><div>${esc(r.orientacao)}</div></div></div>` : ""}
       <div class="row g-2">
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-person"></i> Origem</div><div class="card-body py-2">
-          ${fieldList([["Usuário", r.usuario || "(sem login)"], ["IP de origem", r.ip_origem], ["Porta de origem", r.porta_origem], ["Entrou pela interface", r.interface_entrada]])}</div></div></div>
+          ${fieldList([["Usuário", r.usuario || "(sem login)"], ["IP de origem", r.ip_origem], ["Máquina", r.maquina], ["MAC", r.mac],
+                       ["Sistema", [r.sistema, r.tipo_dispositivo, r.fabricante].filter(Boolean).join(" · ")],
+                       ["Porta de origem", r.porta_origem], ["Entrou pela interface", r.interface_entrada]])}</div></div></div>
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-globe"></i> Destino</div><div class="card-body py-2">
           ${fieldList([["Site", r.site], ["URL", readableUrl(r.url)], ["IP de destino", r.ip_destino], ["Porta / serviço", r.servico || r.porta_destino],
                        ["Aplicação", r.aplicacao], ["Categoria", r.categoria], ["Saiu pela interface", r.interface_saida]])}</div></div></div>
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-bricks"></i> Firewall</div><div class="card-body py-2">
-          ${fieldList([["Firewall", r.firewall], ["Regra", r.regra], ["Perfil de segurança", r.politica], ["Ação registrada", r.acao_original], ["Tipo de log", r.tipo_log]])}</div></div></div>
+          ${fieldList([["Firewall", r.firewall], ["Regra", r.regra], ["Perfil de segurança", r.politica], ["Ação registrada", r.acao_original], ["Tipo de log", logtypeLabel(r.tipo_log)]])}</div></div></div>
       </div>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button class="btn btn-sm btn-primary" data-act="copy"><i class="bi bi-clipboard"></i> Copiar resumo para o chamado</button>
@@ -525,14 +540,23 @@ const FLP = (() => {
       if (rep.tipo !== "ip") sandboxButton(box, rep, sbBox, show);
       box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     };
+    // a categoria do FortiGuard do próprio log (filtro web/DNS) entra no veredito do site
+    const cat = indicator === r.site ? (r.log_original || {}).catdesc : "";
     try {
-      show(await api("/api/v1/reputation", { method: "POST", body: { indicator, type: "auto" } }));
+      show(await api("/api/v1/reputation", { method: "POST", body: { indicator, type: "auto", ...(cat ? { categoria_fortiguard: cat } : {}) } }));
     } catch (e) {
       if (box.isConnected && box.dataset.token === token) box.innerHTML = `<div class="alert alert-danger small mb-0">Vision One: ${esc(e.message)}</div>`;
-    } finally { busy(btn, false); }
+    } finally {
+      busy(btn, false);
+      // o botão desabilitado durante a consulta perde o foco; devolve à janela para o Esc continuar fechando
+      if (m.classList.contains("show") && !m.contains(document.activeElement)) m.focus();
+    }
   }
 
   const sandboxEnabled = () => document.body.dataset.sandbox === "1";
+  // mantém a categoria do FortiGuard que veio do log quando a reputação é refeita com o Sandbox
+  const fortiguardBody = (rep) => (rep.fortiguard?.origem === "evento" && rep.fortiguard.categoria
+    ? { categoria_fortiguard: rep.fortiguard.categoria } : {});
 
   function sandboxButton(box, rep, sbBox, onResult) {
     const card = box.querySelector(".card-body");
@@ -545,18 +569,18 @@ const FLP = (() => {
     b.addEventListener("click", async () => {
       busy(b, true);
       try {
-        const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator: rep.indicador, type: rep.tipo, sandbox: true } });
+        const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator: rep.indicador, type: rep.tipo, sandbox: true, ...fortiguardBody(rep) } });
         const task = sub.detalhes?.sandbox?.task_id;
         if (!task) throw new Error(sub.erros?.sandbox || "O Sandbox não aceitou o envio.");
         b.closest("div").remove();
-        sandboxFlow(sbBox, rep.indicador, rep.tipo, task, onResult);
+        sandboxFlow(sbBox, rep.indicador, rep.tipo, task, onResult, fortiguardBody(rep));
       } catch (e) { toast(`Sandbox: ${e.message}`, "warning"); busy(b, false); }
     });
   }
 
   // Acompanha a análise do Sandbox e, ao terminar, refaz a reputação com o resultado no veredito
   // (as outras fontes não são consultadas de novo). Para sozinho se a janela for fechada.
-  async function sandboxFlow(box, indicator, type, taskId, onResult) {
+  async function sandboxFlow(box, indicator, type, taskId, onResult, extra = {}) {
     box.innerHTML = `<div class="alert alert-info small mb-0"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${esc(taskId)}). Pode levar alguns minutos...</div>`;
     for (let i = 0; i < 60; i++) {
       if (!box.isConnected) return;
@@ -570,7 +594,7 @@ const FLP = (() => {
             · detecções: ${esc((res.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${esc(res.concluido_em)}
             <div class="sb-upd mt-1"><span class="spinner-border spinner-border-sm"></span> Atualizando a reputação com o resultado do Sandbox...</div></div>`;
           try {
-            onResult(await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: false, sandbox_task: taskId } }));
+            onResult(await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: false, sandbox_task: taskId, ...extra } }));
           } catch (e) { toast(e.message, "danger"); }
           box.querySelector(".sb-upd")?.remove();
           return;
@@ -587,6 +611,16 @@ const FLP = (() => {
     const list = (xs) => (xs || []).join(", ") || "-";
     const row = (k, v) => `<dt class="col-sm-3">${k}</dt><dd class="col-sm-9">${v}</dd>`;
     const errs = Object.entries(r.erros || {});
+    const fg = r.fortiguard;  // categoria do site no FortiGuard (null para IP)
+    let fgRow = "";
+    if (fg) {
+      const cls = fg.risco === "alto" ? "danger" : fg.risco === "medio" ? "warning" : fg.nao_classificado ? "secondary" : "success";
+      const where = fg.origem === "evento" ? "registrada no log" : `visto no log de ${shortTime(fg.visto_em)}`;
+      fgRow = row("FortiGuard", fg.categoria
+        ? `<span class="badge text-bg-${cls}">${esc(fg.categoria)}</span> <span class="text-body-secondary">${esc(
+            fg.risco ? `categoria de risco · ${where}` : fg.nao_classificado ? `site ainda não classificado · ${where}` : where)}</span>`
+        : `<span class="text-body-secondary">${esc(fg.erro ? `não consultado (${fg.erro})` : "sem acesso a este site nos logs das últimas 24 h")}</span>`);
+    }
     container.innerHTML = `
       <div class="card mb-3 rep-card"><div class="card-body">
         <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
@@ -599,6 +633,7 @@ const FLP = (() => {
         </div>
         <dl class="row small mb-0">
           ${row("Categoria", esc(r.categoria ?? "-"))}
+          ${fgRow}
           ${row("Severidade", esc(r.severidade ?? "-"))}
           ${row("Tipo da ameaça", esc(list(r.tipo_ameaca)))}
           ${row("IOC relacionados", (r.iocs_relacionados || []).map((i) => `<span class="badge text-bg-secondary me-1">${esc(i.tipo)}: ${esc(i.valor)}</span>`).join("") || "-")}
@@ -724,9 +759,10 @@ const FLP = (() => {
     ["action", "Ação", "deny, accept, blocked..."], ["policy", "Regra (nº ou nome)", "14"],
     ["url", "URL (trecho)", "/login"], ["category", "Categoria do site", "Games"], ["profile", "Perfil de segurança", "WebFilter"],
     ["srcport", "Porta de origem", "50000"], ["srcintf", "Interface de entrada", "Rede_Adm"], ["dstintf", "Interface de saída", "Wan01"],
+    ["srcname", "Nome da máquina", "NB-ADM-01234"], ["srcmac", "MAC de origem", "00:1a:2b:3c:4d:5e"], ["devname", "Firewall (nome)", "FW-BRASILIA"],
   ];
   const FILTER_LABEL = Object.fromEntries(FILTERS.map(([k, l]) => [k, l]));
-  const EXACT = new Set(["srcip", "dstip", "dstport", "srcport", "action", "policy"]);
+  const EXACT = new Set(["srcip", "dstip", "dstport", "srcport", "action", "policy", "srcmac"]);
   const OP_LABEL = { "=": "=", "!=": "≠", "~": "contém" };
 
   function filterBuilder(box, onChange) {

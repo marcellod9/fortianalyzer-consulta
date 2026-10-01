@@ -28,6 +28,21 @@ SITES = [
 ]
 APPS = [("Facebook", "Social.Media", "block"), ("BitTorrent", "P2P", "block"), ("Microsoft.Teams", "Collaboration", "pass"),
         ("YouTube", "Video/Audio", "pass"), ("Tor", "Proxy", "block")]
+# (sistema, tipo, fabricante, prefixo do nome); None = firewall sem identificação de dispositivos nessa rede
+DEVICE_KINDS = [None, ("Windows", "Windows PC", "Dell", "NB-ADM"), ("Android", "Android Phone", "Samsung", "Galaxy"),
+                ("iOS", "iPhone", "Apple", "iPhone"), ("Windows", "Windows PC", "Lenovo", "PC-LAB"), ("macOS", "Mac", "Apple", "MacBook")]
+
+
+def _device(src: str) -> dict:
+    o = [int(x) for x in src.split(".")]
+    kind = DEVICE_KINDS[sum(o) % len(DEVICE_KINDS)]
+    if not kind:
+        return {}
+    osname, devtype, vendor, prefix = kind
+    return {"srcname": f"{prefix}-{o[2]:02d}{o[3]:03d}", "srcmac": f"00:1a:2b:{o[1]:02x}:{o[2]:02x}:{o[3]:02x}",
+            "osname": osname, "devtype": devtype, "srchwvendor": vendor}
+
+
 POLICIES = [(1, "Internet_Corporativa", "lan", "wan1"), (2, "Internet_Alunos", "wifi-alunos", "wan1"),
             (5, "Servidores_DMZ", "dmz", "wan2"), (0, "", "lan", "wan1")]
 
@@ -57,6 +72,7 @@ class DemoFazClient:
             "devname": dev["name"], "devid": dev["sn"], "srcip": src, "srcport": rnd.randint(1024, 65000),
             "user": user, "srcintf": pol[2], "dstintf": pol[3], "policyid": pol[0], "policyname": pol[1],
             "policytype": "policy",
+            **_device(src),
         }
         if logtype == "webfilter":
             host, cat, action, ev = rnd.choice(SITES)

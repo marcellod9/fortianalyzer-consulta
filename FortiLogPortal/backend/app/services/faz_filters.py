@@ -39,6 +39,7 @@ BLOCK_ACTIONS = {
 SAFE_NAME = re.compile(r"^[\w.\-]{1,64}$")
 SAFE_TEXT = re.compile(r'^[^"\\\x00-\x1f]{1,256}$')  # qualquer texto sem aspas, barra invertida ou controle
 SAFE_ACTION = re.compile(r"^[a-z\-]{1,20}$")
+MAC_RE = re.compile(r"^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$", re.I)
 
 
 def _text(v):
@@ -73,6 +74,8 @@ FILTER_FIELDS = {
     "policy": ("policyid", "policy"), "profile": ("profile", "text"),
     "srcintf": ("srcintf", "text"), "dstintf": ("dstintf", "text"),
     "action": ("action", "action"), "devname": ("devname", "text"),
+    # máquina de origem (identificação de dispositivos do FortiGate)
+    "srcname": ("srcname", "text"), "srcmac": ("srcmac", "mac"),
 }
 
 
@@ -97,6 +100,10 @@ class LogFilter(BaseModel):
         elif kind == "action":
             if not SAFE_ACTION.match(v):
                 raise ValueError("Ação inválida")
+        elif kind == "mac":
+            if not MAC_RE.match(v):
+                raise ValueError("MAC inválido (use o formato aa:bb:cc:dd:ee:ff)")
+            self.value = v.lower().replace("-", ":")
         elif kind == "policy":
             if not v.isdigit():
                 self.value = _text(v) or ""
@@ -104,7 +111,7 @@ class LogFilter(BaseModel):
             self.value = _text(v) or ""
         if not self.value:
             raise ValueError(f"Informe um valor para o filtro {self.field}")
-        if kind in ("ip", "port", "action") and self.op == "~":
+        if kind in ("ip", "port", "action", "mac") and self.op == "~":
             self.op = "="  # "contém" só faz sentido para texto
         return self
 

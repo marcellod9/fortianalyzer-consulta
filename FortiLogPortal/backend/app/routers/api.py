@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import correlation, dashboard, explain, export, reputation
+from ..services import correlation, dashboard, diagnosis, explain, export, reputation
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -111,6 +111,19 @@ def search_logs(q: LogQuery, request: Request, cache: bool = True):
     return res
 
 
+@router.post("/faz/diagnose")
+def diagnose_access(q: diagnosis.DiagnoseQuery, request: Request):
+    """Diagnóstico de acesso: bloqueios do usuário/IP no filtro web, aplicações, DNS e firewall de uma vez."""
+    term = f"{q.quem.strip()} -> {(q.destino or '').strip() or '(qualquer destino)'}"
+    with tracked(request, "diagnostico", term, q.model_dump(mode="json")) as info:
+        res = diagnosis.diagnose(q)
+        info.update(count=len(res["rows"]), blocked=sum(c["bloqueios"] for c in res["camadas"]), summary=res["titulo"])
+    res["result_id"] = store_result("diagnostico", f"Diagnóstico {term}", explain.COLUMNS, res["rows"],
+                                    {"Resultado": res["titulo"], "Resumo": res["resumo"], "O que fazer": res["orientacao"],
+                                     "Período": f"{res['periodo']['inicio']} a {res['periodo']['fim']}"})
+    return res
+
+
 @router.post("/faz/logs/live")
 def live_logs(q: LogQuery, request: Request, first: bool = False):
     """Tempo real: a tela repete a mesma pesquisa a cada poucos segundos para a janela mais recente.
@@ -149,6 +162,7 @@ class RepQuery(BaseModel):
     type: str = "auto"
     sandbox: bool = False
     sandbox_task: str | None = Field(default=None, max_length=80)  # tarefa concluída a incluir no veredito
+    categoria_fortiguard: str | None = Field(default=None, max_length=128)  # categoria do site vinda do log aberto
 
 
 def _rep_rows(r: dict) -> list[dict]:
@@ -166,7 +180,7 @@ def _rep_rows(r: dict) -> list[dict]:
 def v1_reputation(q: RepQuery, request: Request):
     with tracked(request, "reputacao", q.indicator, q.model_dump()) as info:
         r = reputation.lookup(q.indicator, q.type, use_sandbox=q.sandbox, username=who(request),
-                              sandbox_task=q.sandbox_task)
+                              sandbox_task=q.sandbox_task, fortiguard_category=q.categoria_fortiguard)
         info.update(count=1, summary=f"{r['reputacao']} (score {r['risk_score']})")
     r["result_id"] = store_result("reputacao", f"Reputação {r['indicador']}", REP_COLUMNS, _rep_rows(r))
     return r
