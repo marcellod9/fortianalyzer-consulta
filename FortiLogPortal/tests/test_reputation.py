@@ -36,3 +36,13 @@ def test_subdomain_matches_suspicious_domain():
     assert len(reputation._match_objects(objs, "domain", "evil.org")) == 1
     assert len(reputation._match_objects(objs, "url", "https://bad.com/login")) == 1
     assert reputation._match_objects(objs, "domain", "notbad.com") == []
+
+
+def test_all_sources_failing_is_not_reported_as_clean():
+    from app.services.reputation import consolidate
+    errs = {k: "Vision One HTTP 403" for k in ("suspicious_objects", "exceptions", "detections", "workbench")}
+    r = consolidate("ip", "57.144.164.196", {}, errs)
+    assert r["reputacao"] == "Não foi possível consultar" and r["fontes"] == ["Nenhuma fonte respondeu"]
+    r = consolidate("ip", "57.144.164.196", {"exceptions": {"items": []}}, {k: v for k, v in errs.items() if k != "exceptions"})
+    assert r["reputacao"] == "Inconclusivo"
+    assert consolidate("ip", "57.144.164.196", {}, {})["reputacao"] == "Sem registro no Vision One"

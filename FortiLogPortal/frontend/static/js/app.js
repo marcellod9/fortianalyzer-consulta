@@ -97,7 +97,7 @@ const FLP = (() => {
   }
 
   function verdictClass(rep) {
-    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Confiável (exceção)": "success" }[rep] || "secondary";
+    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Confiável (exceção)": "success", "Não foi possível consultar": "warning", "Inconclusivo": "warning" }[rep] || "secondary";
   }
   function riskColor(score) {
     if (score >= 80) return "var(--bs-danger)";

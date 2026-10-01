@@ -248,6 +248,8 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
             severidade_key = sev
 
     risk = max(scores) if scores else 0
+    core = ("suspicious_objects", "exceptions", "detections", "workbench")
+    failed = [k for k in core if k in errors]
     if exc and not so:
         reputacao, risk = "Confiável (exceção)", min(risk, 10)
         fontes.append("Lista de exceções")
@@ -257,6 +259,10 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         reputacao = "Suspeito"
     elif risk > 0:
         reputacao = "Baixo risco"
+    elif len(failed) == len(core):
+        reputacao = "Não foi possível consultar"   # nenhuma fonte respondeu: não é "sem registro"
+    elif failed:
+        reputacao = "Inconclusivo"
     else:
         reputacao = "Sem registro no Vision One"
 
@@ -275,6 +281,13 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
                      "Não solicitar liberação sem justificativa de negócio aprovada."],
         "Baixo risco": ["Indicador com registro de baixo risco; avaliar a necessidade de negócio antes de liberar."],
         "Confiável (exceção)": ["Indicador marcado como confiável pela organização no Vision One."],
+        "Não foi possível consultar": [
+            "O Vision One recusou todas as consultas. Veja em \"Fontes que falharam\" o motivo (geralmente permissão "
+            "da função da chave de API) e repita depois de corrigir.",
+            "Enquanto isso, não trate o indicador como seguro."],
+        "Inconclusivo": [
+            "Algumas fontes do Vision One não responderam (veja \"Fontes que falharam\"); as que responderam não "
+            "têm registro do indicador. O resultado pode estar incompleto."],
         "Sem registro no Vision One": [
             "Nenhum registro no Vision One no período consultado. Isso não garante que o recurso seja seguro.",
             "Se precisar de mais certeza para uma URL, use a análise no Sandbox (quando habilitada)."],
@@ -291,7 +304,7 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict) -> dict:
         "iocs_relacionados": iocs,
         "ultima_analise": _latest(*datas) or "-",
         "confianca": confianca,
-        "fontes": fontes or ["Vision One (sem ocorrências)"],
+        "fontes": fontes or (["Nenhuma fonte respondeu"] if len(failed) == len(core) else ["Vision One (sem ocorrências)"]),
         "recomendacoes": recomendacoes,
         "detalhes": {
             "suspicious_objects": [{"tipo": o.get("type"), "valor": object_value(o), "risco": o.get("riskLevel"),
