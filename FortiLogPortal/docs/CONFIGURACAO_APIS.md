@@ -1,0 +1,164 @@
+# Configuração das APIs
+
+Toda credencial fica em `config\.env` (copiado de `config\.env.example`). Esse arquivo está no
+`.gitignore` e nunca deve ser enviado por e-mail, chat ou repositório.
+
+Depois de editar o `.env`, reinicie o portal e use **Configuração > Testar FortiAnalyzer / Testar Vision One**.
+
+---
+
+## 1. FortiAnalyzer (`https://fortianalyzer.marista.edu.br`)
+
+O portal usa a **API JSON-RPC oficial** do FortiAnalyzer (`POST /jsonrpc`), a mesma documentada
+no Fortinet Developer Network (FNDN):
+
+| Chamada | Uso |
+|---|---|
+| `get /sys/status` | teste de conexão (hostname e versão) |
+| `get /dvmdb/adom` | lista ADOMs |
+| `get /dvmdb/adom/{adom}/device` | lista firewalls (nome, número de série, IP) |
+| `add /logview/adom/{adom}/logsearch` (apiver 3) | cria a busca e devolve `tid` |
+| `get /logview/adom/{adom}/logsearch/{tid}` | lê o resultado até `percentage = 100` |
+| `delete /logview/adom/{adom}/logsearch/{tid}` | libera a tarefa no FAZ |
+
+### Criar o acesso (no FortiAnalyzer)
+
+1. **System Settings > Admin > Profiles**: crie um perfil **somente leitura** com *Log View*
+   (Read-Only) e *Device Manager* (Read-Only). Os demais itens em *None*.
+2. **System Settings > Admin > Administrators > Create New**:
+   - *Admin Type*: **REST API Admin**;
+   - *Admin Profile*: o perfil acima;
+   - *Administrative Domain*: só as ADOMs necessárias;
+   - *Trusted Hosts*: o IP da sua máquina (ou a faixa da VPN/rede da equipe);
+   - *JSON API Access*: **Read**.
+3. Ao salvar, o FAZ exibe o **token** uma única vez. Cole em `FAZ_API_TOKEN`.
+
+O token é enviado como `Authorization: Bearer <token>` (FortiAnalyzer 7.2.2 ou superior; o
+ambiente atual é 7.4.7).
+
+### Variáveis
+
+| Variável | Exemplo | Descrição |
+|---|---|---|
+| `FAZ_URL` | `https://fortianalyzer.marista.edu.br` | sem `/jsonrpc` no final |
+| `FAZ_API_TOKEN` | *(token)* | token do REST API Admin |
+| `FAZ_VERIFY_TLS` | `true` | `true`, `false` ou caminho do `.pem` da CA interna |
+| `FAZ_DEFAULT_ADOM` | `root` | ADOM selecionada por padrão |
+| `FAZ_MAX_RESULTS` | `1000` | máximo de linhas por consulta |
+| `FAZ_SEARCH_TIMEOUT` | `120` | segundos até desistir de uma busca |
+
+Se o certificado do FAZ for emitido pela CA interna, exporte a CA em Base64 (`.pem`/`.cer`),
+salve em `config\ca-marista.pem` e use `FAZ_VERIFY_TLS=config\ca-marista.pem` (caminho
+relativo à pasta FortiLogPortal ou absoluto). Use `false` só em teste.
+
+### Mapeamento dos campos de log (FortiOS 7.x)
+
+| Portal | Campo do log | Observação |
+|---|---|---|
+| Data e hora | `date` + `time` (ou `itime`) | horário do firewall |
+| Firewall | `devname` | |
+| IP/porta origem e destino | `srcip`, `srcport`, `dstip`, `dstport` | aceita IP ou rede (`10.1.0.0/16`) |
+| Usuário | `user` (ou `unauthuser`) | |
+| Site / URL | `hostname` (`qname` em DNS), `url` | |
+| Aplicação / categoria | `app`, `appcat`, `catdesc` | |
+| Regra | `policyid` + `policyname` | regra 0 = bloqueio implícito |
+| Política | `profile` | perfil de segurança (web filter, app control, DNS...) |
+| Interfaces | `srcintf`, `dstintf` | |
+| Ação | `action` | Allow / Deny / Block |
+| Motivo | `eventtype`, `catdesc`, `msg`, `attack`, `virus` | traduzido para linguagem simples |
+
+"Somente bloqueios" usa `action=deny` (tráfego), `blocked` (filtro web, antivírus, SSL),
+`block` (aplicações, DNS) e `dropped` (IPS).
+
+---
+
+## 2. Trend Micro Vision One (`https://portal.xdr.trendmicro.com`)
+
+O portal usa a **API pública oficial v3.0** (https://automation.trendmicro.com/xdr/api-v3),
+com `Authorization: Bearer <chave>`.
+
+### Região (V1_BASE_URL)
+
+A URL da API depende da região do tenant. `portal.xdr.trendmicro.com` corresponde à região **EUA**:
+
+| Região | V1_BASE_URL |
+|---|---|
+| EUA | `https://api.xdr.trendmicro.com` |
+| Europa | `https://api.eu.xdr.trendmicro.com` |
+| Japão | `https://api.xdr.trendmicro.co.jp` |
+| Singapura | `https://api.sg.xdr.trendmicro.com` |
+| Austrália | `https://api.au.xdr.trendmicro.com` |
+| Índia | `https://api.in.xdr.trendmicro.com` |
+| Oriente Médio e África | `https://api.mea.xdr.trendmicro.com` |
+
+### Criar a chave de API
+
+1. No console: **Administration > User Roles**: crie uma função (ex.: `FortiLogPortal-Leitura`)
+   apenas com permissões de visualização de:
+   - *Threat Intelligence > Suspicious Object Management* (View);
+   - *Search* (View) — para detecções;
+   - *Workbench* (View) — para alertas;
+   - *Sandbox Analysis* (View e Submit) — só se for usar a análise de URL;
+   - *Endpoint Inventory* (View) — opcional, para a evolução de inventário.
+2. **Administration > API Keys > Add API Key**: escolha a função acima e uma validade.
+3. Copie a chave para `V1_API_TOKEN`.
+
+Os nomes exatos das permissões podem variar conforme a versão do console. Se uma fonte
+responder HTTP 403, a tela de reputação mostra qual fonte falhou; ajuste a função.
+
+### Endpoints usados
+
+| Endpoint | Uso no portal |
+|---|---|
+| `GET /v3.0/healthcheck/connectivity` | teste de conexão |
+| `GET /v3.0/threatintel/suspiciousObjects` | IOC marcados como suspeitos (risco, ação, validade) |
+| `GET /v3.0/threatintel/suspiciousObjectExceptions` | objetos marcados como confiáveis |
+| `GET /v3.0/search/detections` + header `TMV1-Query` | detecções do indicador no ambiente |
+| `GET /v3.0/workbench/alerts` | alertas que citam o indicador; base de *Active/Critical/Open Alerts* |
+| `GET /v3.0/endpointSecurity/endpoints` | inventário de endpoints (`/api/v1/endpoints`, uso futuro) |
+| `POST /v3.0/sandbox/urls/analyze`, `GET /v3.0/sandbox/tasks/{id}`, `GET /v3.0/sandbox/analysisResults/{id}` | análise de URL no Sandbox (opcional) |
+
+### Como a reputação é calculada
+
+A API pública v3.0 **não tem um endpoint de "reputação global"** para consultar um IP ou domínio
+avulso. O portal consolida as fontes oficiais acima:
+
+| Campo exibido | Origem |
+|---|---|
+| Reputação | Malicioso (score ≥ 80), Suspeito (≥ 50), Baixo risco, Confiável (exceção) ou Sem registro |
+| Risk Score | maior valor entre: risco do Suspicious Object (high 90, medium 65, low 35), score do alerta do Workbench, detecções (≥ 55) e Sandbox |
+| Categoria | descrição do Suspicious Object |
+| Severidade | risco do Suspicious Object ou severidade do alerta |
+| Tipo da ameaça | modelos de alerta, nomes de detecção, tipos do Sandbox |
+| IOC relacionados | outros indicadores dos alertas e do Sandbox |
+| Última análise | data mais recente entre as fontes |
+| Nível de confiança | Alta (Suspicious Object/Sandbox), Média (alerta/detecção), Baixa (sem registro) |
+| Fonte | fontes que retornaram ocorrência |
+| Recomendações | orientação do portal conforme a classificação |
+
+"Sem registro" significa que o indicador não aparece no tenant no período (`V1_LOOKBACK_DAYS`),
+não que é seguro. Para URLs, o Sandbox dá uma análise própria (`V1_SANDBOX_ENABLED=true`;
+consome a cota diária de envios do tenant).
+
+### Consultas de detecções
+
+As consultas usam a sintaxe `campo:"valor"` do header `TMV1-Query`, configuráveis no `.env`:
+
+```
+V1_DETECTION_QUERY_URL=request:"{v}"
+V1_DETECTION_QUERY_DOMAIN=request:"*{v}*"
+V1_DETECTION_QUERY_IP=dst:"{v}" or src:"{v}"
+```
+
+Valide no primeiro uso real: faça a mesma busca na tela *Search* do Vision One (fonte
+*Detections*) e, se o tenant usar outros campos, ajuste as variáveis.
+
+### Variáveis
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `V1_BASE_URL` | `https://api.xdr.trendmicro.com` | URL da região |
+| `V1_API_TOKEN` | *(vazio)* | chave de API |
+| `V1_VERIFY_TLS` | `true` | `true`, `false` ou caminho da CA (proxy com inspeção TLS) |
+| `V1_LOOKBACK_DAYS` | `30` | janela de busca de detecções e alertas |
+| `V1_SANDBOX_ENABLED` | `false` | habilita o envio de URL ao Sandbox |
