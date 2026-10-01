@@ -65,7 +65,8 @@ try {
 
 # 2. Versão disponível x instalada
 $versionFile = Join-Path $Root ".versao-instalada"
-$installed = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
+$installed = ""
+try { if (Test-Path $versionFile) { $installed = ([IO.File]::ReadAllText($versionFile)).Trim() } } catch { }
 $latest = ""
 try {
     $commit = Invoke-RestMethod -UseBasicParsing -Headers @{ "User-Agent" = "FortiLogPortal-update" } `
@@ -139,7 +140,18 @@ if (-not (Test-Path $venvPy)) {
     if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar dependências." }
     & $venvPy -c "import sys; sys.path.insert(0,'backend'); from app.database import init_db; init_db(); print('Banco atualizado.')"
 }
-if ($latest) { Set-Content -Path $versionFile -Value $latest }
+# Registra a versão instalada. O OneDrive às vezes segura o arquivo durante a sincronização:
+# tenta algumas vezes e, se não der, só avisa (a atualização em si já foi concluída).
+if ($latest) {
+    $saved = $false
+    for ($i = 0; $i -lt 5 -and -not $saved; $i++) {
+        try { [IO.File]::WriteAllText($versionFile, $latest); $saved = $true }
+        catch { Start-Sleep -Seconds 2 }
+    }
+    if (-not $saved) {
+        Write-Host "Aviso: não foi possível gravar .versao-instalada (arquivo em uso pelo OneDrive). O próximo update baixa de novo, sem problema." -ForegroundColor Yellow
+    }
+}
 
 # 7. Variáveis novas no modelo de configuração
 if (Test-Path "config\.env") {
