@@ -11,3 +11,5 @@ exports/*
 !exports/.gitkeep
 cache/*
 !cache/.gitkeep
+backups/
+.versao-instalada
