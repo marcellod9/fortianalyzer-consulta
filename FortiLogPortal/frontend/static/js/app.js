@@ -143,6 +143,11 @@ const FLP = (() => {
   }
 
   const destinationOf = (r) => r.destino || r.site || r.ip_destino || "";
+  // alguns logs trazem a URL codificada (https%3A%2F%2Fsite%2F); na tela ela aparece legível
+  const readableUrl = (u) => {
+    if (!u || !/%[0-9a-f]{2}/i.test(u)) return u || "";
+    try { return decodeURIComponent(u); } catch { return u; }
+  };
   const listDestination = (r) => r.site || r.ip_destino || destinationOf(r);  // a porta aparece na linha de baixo
   const whoOf = (r) => r.usuario || r.ip_origem || "";
 
@@ -182,7 +187,7 @@ const FLP = (() => {
     { key: "porta_origem", label: "Porta de origem", td: txt("porta_origem") },
     { key: "ip_destino", label: "IP de destino", td: txt("ip_destino", "text-nowrap") },
     { key: "servico", label: "Porta / serviço", td: txt("servico", "text-nowrap") },
-    { key: "url", label: "URL", td: txt("url", "cell-trunc") },
+    { key: "url", label: "URL", td: (r) => `<td class="cell-trunc" title="${esc(readableUrl(r.url))}">${esc(readableUrl(r.url))}</td>` },
     { key: "aplicacao", label: "Aplicação", td: txt("aplicacao", "cell-trunc") },
     { key: "categoria", label: "Categoria", td: txt("categoria", "cell-trunc") },
     { key: "politica", label: "Perfil de segurança", td: txt("politica", "cell-trunc") },
@@ -450,12 +455,13 @@ const FLP = (() => {
     return [
       `Data/hora: ${r.data_hora}${r.vezes > 1 ? ` (${r.vezes} ocorrências desde ${r.primeiro})` : ""}`,
       `Usuário: ${r.usuario || "(sem login)"} - IP ${r.ip_origem || "-"}`,
-      `Destino: ${destinationOf(r)}${r.url && r.url !== r.site ? ` (${r.url})` : ""}`,
+      `Destino: ${destinationOf(r)}${r.url && r.url !== r.site ? ` (${readableUrl(r.url)})` : ""}`,
       `Porta/serviço: ${r.servico || r.porta_destino || "-"}${r.aplicacao ? ` - Aplicação: ${r.aplicacao}` : ""}`,
       `Resultado: ${s}`,
       `Motivo: ${r.motivo || "-"}`,
       `Regra: ${r.regra || "-"}${r.politica ? ` - Perfil: ${r.politica}` : ""}`,
       `Firewall: ${r.firewall || "-"}`,
+      ...Object.values(r._rep || {}).map((rep) => `Reputação (Vision One) de ${rep.indicador}: ${rep.reputacao} (score ${rep.risk_score}/100)`),
     ].join("\n");
   }
 
@@ -471,7 +477,7 @@ const FLP = (() => {
   function showLogModal(r) {
     const m = document.getElementById("logModal");
     const sit = SITUATION[situationOf(r)];
-    const repTarget = r.site || r.ip_destino;
+    const repTargets = [r.site, r.ip_destino].filter((v, i, a) => v && a.indexOf(v) === i);
     m.querySelector(".modal-title").textContent = "Detalhes do evento";
     m.querySelector(".modal-body").innerHTML = `
       <div class="alert alert-${sit.cls} d-flex gap-3 align-items-start mb-3">
@@ -485,19 +491,125 @@ const FLP = (() => {
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-person"></i> Origem</div><div class="card-body py-2">
           ${fieldList([["Usuário", r.usuario || "(sem login)"], ["IP de origem", r.ip_origem], ["Porta de origem", r.porta_origem], ["Entrou pela interface", r.interface_entrada]])}</div></div></div>
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-globe"></i> Destino</div><div class="card-body py-2">
-          ${fieldList([["Site", r.site], ["URL", r.url], ["IP de destino", r.ip_destino], ["Porta / serviço", r.servico || r.porta_destino],
+          ${fieldList([["Site", r.site], ["URL", readableUrl(r.url)], ["IP de destino", r.ip_destino], ["Porta / serviço", r.servico || r.porta_destino],
                        ["Aplicação", r.aplicacao], ["Categoria", r.categoria], ["Saiu pela interface", r.interface_saida]])}</div></div></div>
         <div class="col-md-4"><div class="card h-100"><div class="card-header py-1 small fw-semibold"><i class="bi bi-bricks"></i> Firewall</div><div class="card-body py-2">
           ${fieldList([["Firewall", r.firewall], ["Regra", r.regra], ["Perfil de segurança", r.politica], ["Ação registrada", r.acao_original], ["Tipo de log", r.tipo_log]])}</div></div></div>
       </div>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button class="btn btn-sm btn-primary" data-act="copy"><i class="bi bi-clipboard"></i> Copiar resumo para o chamado</button>
-        ${repTarget ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="/reputacao?q=${encodeURIComponent(repTarget)}"><i class="bi bi-shield-check"></i> Consultar reputação de ${esc(repTarget)}</a>` : ""}
+        ${repTargets.map((t, i) => `<button class="btn btn-sm btn-outline-primary" data-rep="${esc(t)}"><span class="spinner-border spinner-border-sm spinner-overlay"></span>
+          <i class="bi bi-shield-check"></i> ${i ? `Reputação do IP ${esc(t)}` : `Consultar reputação de ${esc(t)}`}</button>`).join("")}
         <button class="btn btn-sm btn-outline-secondary ms-auto" data-bs-toggle="collapse" data-bs-target="#rawLog"><i class="bi bi-code"></i> Log original (para N2)</button>
       </div>
-      <div class="collapse mt-2" id="rawLog"><pre class="raw">${esc(JSON.stringify(r.log_original || r, null, 2))}</pre></div>`;
+      <div class="collapse mt-2" id="rawLog"><pre class="raw">${esc(JSON.stringify(r.log_original || r, null, 2))}</pre></div>
+      <div id="logSandbox" class="mt-3"></div>
+      <div id="logRep" class="mt-3"></div>`;
     m.querySelector('[data-act="copy"]').addEventListener("click", () => copyText(ticketText(r)));
+    m.querySelectorAll("[data-rep]").forEach((b) => b.addEventListener("click", () => reputationInModal(m, r, b.dataset.rep, b)));
     bootstrap.Modal.getOrCreateInstance(m).show();
+  }
+
+  // ---- reputação (Vision One) dentro da janela do evento -----------------------------
+  async function reputationInModal(m, r, indicator, btn) {
+    const box = m.querySelector("#logRep"), oldSb = m.querySelector("#logSandbox");
+    // nova consulta: uma análise do Sandbox ainda em andamento para outro indicador deixa de escrever aqui
+    const sbBox = oldSb.cloneNode(false); oldSb.replaceWith(sbBox);
+    const token = box.dataset.token = String(Math.random());
+    busy(btn, true);
+    box.innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span> Consultando ${esc(indicator)} no Vision One...</div>`;
+    const show = (rep) => {
+      if (!box.isConnected || box.dataset.token !== token) return;
+      (r._rep = r._rep || {})[rep.indicador] = rep;  // entra no "Copiar resumo para o chamado"
+      renderReputation(box, rep);
+      if (rep.tipo !== "ip") sandboxButton(box, rep, sbBox, show);
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+    try {
+      show(await api("/api/v1/reputation", { method: "POST", body: { indicator, type: "auto" } }));
+    } catch (e) {
+      if (box.isConnected && box.dataset.token === token) box.innerHTML = `<div class="alert alert-danger small mb-0">Vision One: ${esc(e.message)}</div>`;
+    } finally { busy(btn, false); }
+  }
+
+  const sandboxEnabled = () => document.body.dataset.sandbox === "1";
+
+  function sandboxButton(box, rep, sbBox, onResult) {
+    const card = box.querySelector(".card-body");
+    if (!card || rep.detalhes?.sandbox_resultado) return;  // já tem resultado do Sandbox no veredito
+    const off = !sandboxEnabled();
+    card.insertAdjacentHTML("beforeend", `<div class="mt-2"><span title="${off ? "Desabilitado: defina V1_SANDBOX_ENABLED=true em config\\.env" : "Envia a URL para análise dinâmica no Sandbox do Vision One (consome cota)"}">
+      <button type="button" class="btn btn-sm btn-outline-primary" data-sandbox ${off ? "disabled" : ""}><span class="spinner-border spinner-border-sm spinner-overlay"></span>
+      <i class="bi bi-box-seam"></i> Analisar no Sandbox</button></span></div>`);
+    const b = card.querySelector("[data-sandbox]");
+    b.addEventListener("click", async () => {
+      busy(b, true);
+      try {
+        const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator: rep.indicador, type: rep.tipo, sandbox: true } });
+        const task = sub.detalhes?.sandbox?.task_id;
+        if (!task) throw new Error(sub.erros?.sandbox || "O Sandbox não aceitou o envio.");
+        b.closest("div").remove();
+        sandboxFlow(sbBox, rep.indicador, rep.tipo, task, onResult);
+      } catch (e) { toast(`Sandbox: ${e.message}`, "warning"); busy(b, false); }
+    });
+  }
+
+  // Acompanha a análise do Sandbox e, ao terminar, refaz a reputação com o resultado no veredito
+  // (as outras fontes não são consultadas de novo). Para sozinho se a janela for fechada.
+  async function sandboxFlow(box, indicator, type, taskId, onResult) {
+    box.innerHTML = `<div class="alert alert-info small mb-0"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${esc(taskId)}). Pode levar alguns minutos...</div>`;
+    for (let i = 0; i < 60; i++) {
+      if (!box.isConnected) return;
+      try {
+        const s = await api(`/api/v1/sandbox/${encodeURIComponent(taskId)}`);
+        if (!box.isConnected) return;
+        if (s.status === "succeeded") {
+          const res = s.resultado;
+          box.innerHTML = `<div class="alert alert-${verdictClass(res.risco === "high" ? "Malicioso" : res.risco === "medium" ? "Suspeito" : "")} small mb-0">
+            <b>Sandbox concluído:</b> risco ${esc(res.severidade)} · ameaças: ${esc((res.tipos_ameaca || []).join(", ") || "nenhuma")}
+            · detecções: ${esc((res.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${esc(res.concluido_em)}
+            <div class="sb-upd mt-1"><span class="spinner-border spinner-border-sm"></span> Atualizando a reputação com o resultado do Sandbox...</div></div>`;
+          try {
+            onResult(await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: false, sandbox_task: taskId } }));
+          } catch (e) { toast(e.message, "danger"); }
+          box.querySelector(".sb-upd")?.remove();
+          return;
+        }
+        if (s.erro) { box.innerHTML = `<div class="alert alert-warning small mb-0">Sandbox: ${esc(s.erro)}</div>`; return; }
+      } catch (e) { box.innerHTML = `<div class="alert alert-warning small mb-0">Sandbox: ${esc(e.message)}</div>`; return; }
+      await new Promise((ok) => setTimeout(ok, 10000));
+    }
+    box.innerHTML = `<div class="alert alert-warning small mb-0">O Sandbox não terminou em 10 minutos. Veja o resultado depois em Threat Intelligence &gt; Sandbox Analysis (tarefa ${esc(taskId)}).</div>`;
+  }
+
+  // Cartão de reputação (aba Reputação, Correlação e janela do evento)
+  function renderReputation(container, r) {
+    const list = (xs) => (xs || []).join(", ") || "-";
+    const row = (k, v) => `<dt class="col-sm-3">${k}</dt><dd class="col-sm-9">${v}</dd>`;
+    const errs = Object.entries(r.erros || {});
+    container.innerHTML = `
+      <div class="card mb-3 rep-card"><div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+          <div><div class="small text-body-secondary">Indicador</div><div class="fw-semibold">${esc(`${r.indicador} (${r.tipo})`)}</div></div>
+          <div><div class="small text-body-secondary">Reputação</div><span class="verdict badge text-bg-${verdictClass(r.reputacao)}">${esc(r.reputacao)}</span></div>
+          <div style="min-width:180px"><div class="small text-body-secondary">Risk Score <b>${esc(r.risk_score)}</b>/100</div>
+            <div class="risk-bar"><div style="width:${Math.max(3, +r.risk_score || 0)}%;background:${riskColor(+r.risk_score || 0)}"></div></div></div>
+          <div class="ms-auto small text-body-secondary">${esc(`Consultado em ${r.consultado_em}${r.cache ? " (cache)" : ""}` +
+            (r.periodo ? ` · janela ${r.periodo.inicio} a ${r.periodo.fim}` : ""))}</div>
+        </div>
+        <dl class="row small mb-0">
+          ${row("Categoria", esc(r.categoria ?? "-"))}
+          ${row("Severidade", esc(r.severidade ?? "-"))}
+          ${row("Tipo da ameaça", esc(list(r.tipo_ameaca)))}
+          ${row("IOC relacionados", (r.iocs_relacionados || []).map((i) => `<span class="badge text-bg-secondary me-1">${esc(i.tipo)}: ${esc(i.valor)}</span>`).join("") || "-")}
+          ${row("Última análise", esc(r.ultima_analise ?? "-"))}
+          ${row("Nível de confiança", esc(r.confianca ?? "-"))}
+          ${row("Fonte da informação", esc(list(r.fontes)))}
+          ${row("Recomendações", `<ul class="mb-0 ps-3">${(r.recomendacoes || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`)}
+        </dl>
+        ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
+        <details class="mt-2"><summary class="small">Detalhes técnicos (Suspicious Objects, detecções, alertas)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
+      </div></div>`;
   }
 
   function exportButtons(container, resultId) {
@@ -720,5 +832,5 @@ const FLP = (() => {
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
   return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
-           renderLogTable, exportButtons, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
+           renderLogTable, exportButtons, renderReputation, sandboxFlow, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();

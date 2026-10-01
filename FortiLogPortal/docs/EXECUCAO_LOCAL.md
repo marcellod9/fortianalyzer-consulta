@@ -22,7 +22,9 @@ o usuário do Windows que iniciou o servidor.
    responder "Conectado".
 2. **Logs**: escolha o firewall, adicione o filtro de usuário de quem reclamou de bloqueio e marque
    "Somente bloqueios". Confira se a regra e o motivo batem com o FortiAnalyzer. Teste também o
-   botão direito (filtrar/excluir) e o duplo clique (detalhes).
+   botão direito (filtrar/excluir) e o duplo clique (detalhes). Nos detalhes, *Consultar reputação*
+   mostra o resultado do Vision One na própria janela (site e, se houver, o IP de destino), com a
+   opção *Analisar no Sandbox* para sites/URLs.
 3. **Logs em tempo real**: clique em *Tempo real* (escolha 5 s, 10 s, 30 s ou 1 min). A lista
    começa com os últimos 5 minutos e os eventos novos entram no topo, destacados. Gere um acesso
    bloqueado de teste e veja se ele aparece. *Pausar* para a atualização e libera a exportação.

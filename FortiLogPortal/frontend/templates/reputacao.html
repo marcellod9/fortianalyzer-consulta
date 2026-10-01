@@ -18,9 +18,8 @@
   <textarea class="form-control form-control-sm mt-1" id="bulk" rows="2" placeholder="google.com&#10;1.1.1.1"></textarea>
   <div class="mt-2 d-flex"><span id="exports" class="ms-auto"></span></div>
 </form>
-<div id="sandbox"></div>
+<div id="sandbox" class="mb-2"></div>
 <div id="result"></div>
-{% include "_reputation_card.html" %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -28,34 +27,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("form"), btn = document.getElementById("btn");
   async function one(indicator, type, sandbox, target, sandbox_task) {
     const r = await FLP.api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox, sandbox_task } });
-    renderReputation(target, r);
+    FLP.renderReputation(target, r);
     return r;
   }
-  async function pollSandbox(taskId, indicator, type) {
-    const box = document.getElementById("sandbox");
-    box.innerHTML = `<div class="alert alert-info small"><span class="spinner-border spinner-border-sm"></span> Análise no Sandbox em andamento (tarefa ${FLP.esc(taskId)})...</div>`;
-    for (let i = 0; i < 60; i++) {
-      try {
-        const s = await FLP.api(`/api/v1/sandbox/${encodeURIComponent(taskId)}`);
-        if (s.status === "succeeded") {
-          const r = s.resultado;
-          box.innerHTML = `<div class="alert alert-${FLP.verdictClass(r.risco === "high" ? "Malicioso" : r.risco === "medium" ? "Suspeito" : "")} small">
-            <b>Sandbox concluído:</b> risco ${FLP.esc(r.severidade)} · ameaças: ${FLP.esc((r.tipos_ameaca || []).join(", ") || "nenhuma")}
-            · detecções: ${FLP.esc((r.deteccoes || []).join(", ") || "nenhuma")} · concluído em ${FLP.esc(r.concluido_em)}</div>`;
-          // refaz a reputação já com o resultado do Sandbox no veredito
-          box.insertAdjacentHTML("beforeend", `<div class="small text-body-secondary mb-2" id="sbUpd"><span class="spinner-border spinner-border-sm"></span> Atualizando a reputação com o resultado do Sandbox...</div>`);
-          try {
-            const rep = await one(indicator, type, false, document.getElementById("result"), taskId);
-            FLP.exportButtons(document.getElementById("exports"), rep.result_id);
-          } catch (e) { FLP.toast(e.message, "danger"); }
-          document.getElementById("sbUpd")?.remove();
-          return;
-        }
-        if (s.erro) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(s.erro)}</div>`; return; }
-      } catch (e) { box.innerHTML = `<div class="alert alert-warning small">Sandbox: ${FLP.esc(e.message)}</div>`; return; }
-      await new Promise((ok) => setTimeout(ok, 10000));
-    }
-  }
+  // Sandbox concluído: refaz a reputação já com o resultado no veredito
+  const pollSandbox = (taskId, indicator, type) => FLP.sandboxFlow(document.getElementById("sandbox"), indicator, type, taskId, (rep) => {
+    FLP.renderReputation(document.getElementById("result"), rep);
+    FLP.exportButtons(document.getElementById("exports"), rep.result_id);
+  });
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     FLP.busy(btn, true);

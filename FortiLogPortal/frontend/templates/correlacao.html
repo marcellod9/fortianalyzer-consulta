@@ -25,7 +25,6 @@
   <div class="d-flex align-items-center mt-3"><h6 class="mb-0">Eventos relacionados</h6><span id="exportsEv" class="ms-auto"></span></div>
   <div id="eventos" class="mt-2"></div>
 </div>
-{% include "_reputation_card.html" %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -49,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="small fw-semibold">Políticas</div><ul class="list-unstyled top-list small">${list(f.politicas)}</ul>
         <div class="small fw-semibold">Motivos</div><ul class="list-unstyled top-list small">${list(f.motivos)}</ul>`
         : `<div class="alert alert-warning small">${FLP.esc(c.erros.fortianalyzer || "Sem dados")}</div>`;
-      if (c.visionone) renderReputation(document.getElementById("v1"), c.visionone);
+      if (c.visionone) FLP.renderReputation(document.getElementById("v1"), c.visionone);
       else document.getElementById("v1").innerHTML = `<div class="alert alert-warning small">Vision One: ${FLP.esc(c.erros.visionone || "sem dados")}</div>`;
       FLP.renderLogTable(document.getElementById("eventos"), (f && f.eventos) || []);
       FLP.exportButtons(document.getElementById("exports"), c.result_id);
