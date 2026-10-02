@@ -33,9 +33,6 @@ INVENTORY_TTL = 1800      # inventário do Vision One em cache (30 min)
 SHOW_MAX = 3000
 LOOKUP_MAX = 500          # máquinas fora da lista procuradas uma a uma no inventário (Endpoint Inventory)
 LOOKUP_BATCH = 10         # máquinas por consulta TMV1-Query
-# o que o FortiGate identifica como celular, TV, impressora etc.: não leva agente Trend
-NOT_COMPUTER = ("android", "ios", "iphone", "ipad", "phone", "tablet", "printer", "impressora", "camera", "tv",
-                "playstation", "xbox", "nintendo", "chromecast", "roku", "router", "switch", "access point", "voip")
 STATE = {
     "desligado": ("Trend desligado ou offline", 0), "sem_contato": ("Trend sem comunicação", 1),
     "sem_trend": ("Sem Trend (fora do inventário)", 2), "desconhecido": ("Situação não informada", 3),
@@ -48,7 +45,7 @@ COLUMNS = [("situacao", "Situação do Trend"), ("maquina", "Máquina"), ("ip", 
 
 
 class CoverageQuery(ThreatQuery):
-    so_computadores: bool = True     # deixa de fora celulares, TVs e impressoras identificados pelo FortiGate
+    so_computadores: bool = True     # só o que o FortiGate identifica como Windows (deixa de fora APs, celulares etc.)
     incluir_ativos: bool = False
 
 
@@ -125,9 +122,9 @@ def machines_from_faz(q: CoverageQuery) -> tuple[list[dict], str, list[str]]:
     return out, origem, avisos
 
 
-def is_computer(m: dict) -> bool:
-    text = f"{m.get('sistema', '')} {m.get('tipo', '')}".lower()
-    return not any(k in text for k in NOT_COMPUTER)
+def is_windows(m: dict) -> bool:
+    """Sistema identificado pelo FortiGate (osname) contém Windows: é o que leva o agente Trend na Marista."""
+    return "windows" in str(m.get("sistema") or "").lower()
 
 
 # ---- inventário do Vision One ----------------------------------------------------------------
@@ -214,7 +211,7 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
     machines, origem, avisos = machines_from_faz(q)
     vistos = len(machines)
     if q.so_computadores:
-        machines = [m for m in machines if is_computer(m)]
+        machines = [m for m in machines if is_windows(m)]
     try:
         client = visionone.get_client()
         if hasattr(client, "inventory_for"):  # demonstração (PORTAL_DEMO=true): inventário só das máquinas vistas

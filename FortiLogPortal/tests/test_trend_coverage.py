@@ -125,3 +125,8 @@ def test_unmanaged_match_is_reported_as_no_trend(monkeypatch):
     out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW))
     assert out["resumo"]["sem_trend"] == 1 and out["resumo"]["desconhecido"] == 0
     assert out["linhas"][0]["situacao"] == tc.UNMANAGED
+
+
+def test_only_windows_filter():
+    assert tc.is_windows({"sistema": "Windows 11"}) and tc.is_windows({"sistema": "windows"})
+    assert not any(tc.is_windows({"sistema": v}) for v in ("", "Linux", "macOS", "Android", "FortiAP"))

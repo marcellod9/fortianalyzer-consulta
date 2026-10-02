@@ -52,7 +52,7 @@ FLP.threatsTrend = (() => {
     box.innerHTML = `
       ${d.avisos.map((a) => `<div class="alert alert-warning small py-2">${esc(a)}</div>`).join("")}
       <div class="row g-2 mb-3">
-        ${k("Máquinas vistas", num(r.computadores), "bi-pc-display", "", r.vistas !== r.computadores ? `${num(r.vistas - r.computadores)} celular(es) e outros fora` : "")}
+        ${k("Máquinas vistas", num(r.computadores), "bi-pc-display", "", r.vistas !== r.computadores ? `${num(r.vistas - r.computadores)} fora do filtro Só Windows` : "")}
         ${k("Trend ativo", num(r.ativos), "bi-shield-check", "text-success")}
         ${k("Trend inativo", num(r.inativos), "bi-shield-x", r.inativos ? "text-danger" : "", "desligado ou sem comunicação")}
         ${k("Sem Trend", num(r.sem_trend), "bi-shield-slash", r.sem_trend ? "text-warning" : "", "fora do inventário do Vision One")}

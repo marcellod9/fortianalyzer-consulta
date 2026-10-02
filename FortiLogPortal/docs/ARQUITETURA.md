@@ -75,7 +75,7 @@ Credenciais **não** ficam no banco.
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
 | POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos |
 | POST | `/api/threats/live?first=` | `{start, end, adom, devices, fontes}` da janela mais recente; a tela pede uma fonte por vez e repete a cada 15/30/60 s: eventos de ameaça com `id` estável, país (`pais`/`mapa`), direção (`entrada`) e firewall. Só a primeira consulta (`first=true`) entra no histórico |
-| POST | `/api/threats/trend-inactive?refresh=` | `{start, end, adom, devices, so_computadores, incluir_ativos}`: máquinas internas vistas no firewall (FortiView Top Sources ou logs de tráfego) cruzadas com o inventário de endpoints do Vision One (cache de 30 min; `refresh=true` lê de novo) e `result_id` para exportar |
+| POST | `/api/threats/trend-inactive?refresh=` | `{start, end, adom, devices, so_computadores, incluir_ativos}` (`so_computadores`: só o que o FortiGate identifica como Windows): máquinas internas vistas no firewall (FortiView Top Sources ou logs de tráfego) cruzadas com o inventário de endpoints do Vision One (cache de 30 min; `refresh=true` lê de novo) e `result_id` para exportar |
 | POST | `/api/reports` | `{tipo: geral\|usuario\|ip\|site\|aplicacao, valor, start, end, adom, devices, somente_bloqueios, top}`: relatório com os dados dos gráficos e `report_id` |
 | GET | `/api/reports/{report_id}.pdf\|xlsx` | baixa o relatório (1 h) |
 | GET | `/api/history?type=&q=` | histórico |
