@@ -12,6 +12,7 @@ FLP.reports = (() => {
   };
   const OTHERS = { light: "#a3a29c", dark: "#6b6a65" };
   const GOOD = "#0ca30c", CRITICAL = "#d03b3b";
+  const GOOD_KEYS = ["Permitidos", "Bloqueadas"];  // na aba Ameaças, bloquear é o resultado bom
   const theme = () => (document.documentElement.getAttribute("data-bs-theme") === "dark" ? "dark" : "light");
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const num = (n) => Number(n || 0).toLocaleString("pt-BR");
@@ -23,7 +24,7 @@ FLP.reports = (() => {
                    site: ["Site ou IP de destino", "facebook.com · youtube.com"], aplicacao: ["Aplicação", "YouTube · Facebook · Tor"] };
 
   function colorsFor(chart) {
-    if (chart.id === "acao") return chart.itens.map(([k]) => (k === "Permitidos" ? GOOD : CRITICAL));
+    if (chart.id === "acao") return chart.itens.map(([k]) => (GOOD_KEYS.includes(k) ? GOOD : CRITICAL));
     const pal = PALETTE[theme()];
     return chart.itens.map(([k], i) => (k === "Outros" ? OTHERS[theme()] : pal[i % pal.length]));
   }
@@ -62,7 +63,7 @@ FLP.reports = (() => {
     const total = totalOf(chart), cols = colorsFor(chart);
     return `<div class="rep-meter" role="img" aria-label="${chart.itens.map(([k, n]) => `${k}: ${n}`).join(", ")}">
       ${chart.itens.map(([k, n], i) => `<div style="flex:${n} 1 0;background:${cols[i]}" title="${esc(k)}: ${num(n)} (${pct(n, total)})"></div>`).join("")}</div>
-      <div class="d-flex flex-wrap gap-3 mt-2 small">${chart.itens.map(([k, n], i) => `<span><i class="bi ${k === "Permitidos" ? "bi-check-circle-fill" : "bi-x-octagon-fill"}" style="color:${cols[i]}"></i>
+      <div class="d-flex flex-wrap gap-3 mt-2 small">${chart.itens.map(([k, n], i) => `<span><i class="bi ${GOOD_KEYS.includes(k) ? "bi-check-circle-fill" : "bi-x-octagon-fill"}" style="color:${cols[i]}"></i>
         <b>${esc(k)}</b>: ${num(n)} (${pct(n, total)})</span>`).join("")}</div>`;
   }
 
@@ -283,5 +284,6 @@ FLP.reports = (() => {
     if (qs.get("tipo") && (qs.get("tipo") === "geral" || valor.value)) form.requestSubmit();
   }
 
-  return { init };
+  // a aba Ameaças usa os mesmos cartões e gráficos
+  return { init, card, drawCharts, kpi };
 })();

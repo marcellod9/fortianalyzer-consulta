@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Ameaças{% endblock %}
+{% block heading %}<i class="bi bi-bug"></i> Ameaças{% endblock %}
+{% block content %}
+<form id="form" class="card card-body mb-3 no-print" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Máquinas com alerta de comprometimento (IOC e botnet do Event Monitor do FortiAnalyzer)
+    e as ameaças vistas nos logs: IPS, antivírus, sites maliciosos e phishing, botnet e domínios maliciosos no DNS.</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-2"><label class="form-label small">Quando?</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="60">Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="1440" selected>Último 1 dia</option><option value="10080">Últimos 7 dias</option>
+        <option value="43200">Últimos 30 dias</option>
+        <option value="n:60">Últimas N horas...</option><option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="2" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+    <div class="col-auto">
+      <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button>
+      <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM"><i class="bi bi-gear"></i></a>
+    </div>
+    <div class="col-auto ms-auto" id="downloads"></div>
+  </div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
+  <div class="collapse" id="advanced"><div class="row g-2 mt-1">
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+  </div></div>
+</form>
+<div id="result"></div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+<script src="/static/js/relatorios.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas.js?v={{ asset_v }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => FLP.threats.init("{{ default_adom }}", {{ 'true' if can_reports else 'false' }}));
+</script>
+{% endblock %}

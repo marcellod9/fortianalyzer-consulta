@@ -1,0 +1,84 @@
+"""Aba Ameaças: alertas do Event Monitor (IOC/botnet) e ranking de ameaças dos logs."""
+from datetime import datetime, timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.services import threats
+from app.services.fortianalyzer import FazClient, FazError
+from test_clients import FakeResp, FakeSession
+
+NOW = datetime(2026, 10, 2, 12, 0)
+
+
+def test_alerts_use_official_eventmgmt_path_and_page():
+    pages = {0: [{"alertid": str(i)} for i in range(1000)], 1000: [{"alertid": "x"}]}
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        assert body["method"] == "get" and p["url"] == "/eventmgmt/adom/root/alerts"
+        assert p["time-range"] == {"start": "2026-10-01 00:00:00", "end": "2026-10-02 00:00:00"} and p["apiver"] == 3
+        return FakeResp(200, {"result": {"data": pages[p["offset"]]}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    res = c.list_alerts("root", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=4000)
+    assert len(res["alerts"]) == 1001 and res["mais"] is False
+
+
+def test_alerts_without_permission_raise():
+    c = FazClient("https://faz.local", "tok", session=FakeSession(
+        lambda *a: FakeResp(200, {"result": {"status": {"code": -11, "message": "No permission"}}})))
+    with pytest.raises(FazError, match="sem permissão"):
+        c.list_alerts("root", "2026-10-01 00:00:00", "2026-10-02 00:00:00")
+
+
+@pytest.mark.parametrize("alert,expected", [
+    ({"triggername": "Default-Compromised Host-Detection-IOC-By-Threat"}, True),
+    ({"triggername": "Default-Botnet-Communication-Detection-By-Endpoint"}, True),
+    ({"subject": "C&C server contacted"}, True),
+    ({"triggername": "Default-Admin-Login-Failure"}, False),
+])
+def test_compromise_alert_detection(alert, expected):
+    assert threats.is_compromise_alert(alert) is expected
+
+
+def test_alert_fields_read_groupby_target_and_details():
+    a = {"groupby1": "threat:Emotet", "groupby2": "user:maria.souza", "target": [{"name": "domain", "value": "c2.example"}]}
+    assert threats._alert_fields(a) == {"usuario": "maria.souza", "ameaca": "Emotet", "dominio": "c2.example"}
+    assert threats._alert_fields({"event_details": {"host_name": "x.example"}})["dominio"] == "x.example"
+    assert threats._alert_time({"alerttime": int(NOW.timestamp())}) == "2026-10-02 12:00:00"
+
+
+def test_inbound_ips_attack_points_to_the_attacked_machine():
+    row = {"data_hora": "2026-10-02 10:00:00", "bloqueado": False, "acao_original": "detected", "usuario": "",
+           "ip_origem": "185.1.1.1", "ip_destino": "10.1.1.5", "maquina": "", "destino": "10.1.1.5:443", "firewall": "FW",
+           "log_original": {"attack": "Log4j", "severity": "critical", "direction": "incoming"}}
+    t = threats.threat_row(row, "ips")
+    assert t["afetado_ip"] == "10.1.1.5" and t["ameaca"] == "Log4j" and t["severidade"] == "critical"
+
+
+def test_api_threats_demo(monkeypatch):
+    with TestClient(app) as c:
+        body = {"start": (NOW - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M"), "end": NOW.strftime("%Y-%m-%dT%H:%M")}
+        r = c.post("/api/threats", json=body)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["comprometidas"]["maquinas"] and set(d["fontes"]) == set(threats.SOURCES)
+        assert d["fontes"]["botnet"]["filtro"].endswith('appcat~"Botnet"')
+        assert d["fontes"]["phishing"]["filtro"] == 'catdesc~"Phishing"'
+        assert d["ameacas"]["linhas"] and d["maquinas"] and d["graficos"]
+        first = d["comprometidas"]["maquinas"][0]
+        assert first["reconhecido"] is False  # sem ACK primeiro
+        assert c.get(f"/api/export/{d['result_id']}.csv").status_code == 200
+        assert c.get("/ameacas").status_code == 200
+
+
+def test_missing_event_permission_keeps_the_log_ranking(monkeypatch):
+    from app.demo.faz_demo import DemoFazClient
+
+    def no_perm(self, *a, **k):
+        raise FazError("/eventmgmt/adom/root/alerts: sem permissão para este recurso (perfil do administrador REST)")
+    monkeypatch.setattr(DemoFazClient, "list_alerts", no_perm)
+    q = threats.ThreatQuery(start=NOW - timedelta(hours=4), end=NOW)
+    d = threats.run(q, use_cache=False)
+    assert "Event Management" in d["comprometidas"]["erro"] and d["ameacas"]["linhas"]

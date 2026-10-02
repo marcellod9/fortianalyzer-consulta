@@ -113,3 +113,8 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 .rep-detail { max-height: 520px; overflow: auto; }
 .rep-detail thead th { position: sticky; top: 0; background: var(--bs-body-bg); }
 @media print { .rep-detail { max-height: none; overflow: visible; } }
+
+/* Ameaças: severidade alta (laranja) e máquina com IOC sem ACK */
+.sev-high { background: #eb6834; color: #fff; }
+[data-bs-theme="dark"] .sev-high { background: #d95926; }
+.table-danger-subtle > td { background: var(--bs-danger-bg-subtle) !important; }

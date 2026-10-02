@@ -30,6 +30,7 @@ PAGES = [
     ("/diagnostico", "diagnostico", "Diagnóstico", "clipboard2-pulse"),
     ("/logs", "logs", "Logs", "list-ul"),
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
+    ("/ameacas", "ameacas", "Ameaças", "bug"),
     ("/relatorios", "relatorios", "Relatórios", "pie-chart"),
     ("/correlacao", "correlacao", "Correlação", "diagram-3"),
     ("/historico", "historico", "Histórico", "clock-history"),
@@ -51,7 +52,7 @@ def _allowed(request: Request, name: str) -> bool:
 def _ctx(request: Request, page: str) -> dict:
     visible = [p for p in PAGES if _allowed(request, p[1])]
     return {"request": request, "page": page, "pages": visible, "user": auth.current(request),
-            "auth_enabled": settings.auth_enabled, "demo": settings.demo, "versao": __version__, "asset_v": ASSET_V,
+            "auth_enabled": settings.auth_enabled, "can_reports": auth.can_reports(request), "demo": settings.demo, "versao": __version__, "asset_v": ASSET_V,
             "logtypes": LOGTYPES, "default_adom": settings.faz_default_adom,
             "sandbox_enabled": settings.v1_sandbox_enabled, "max_results": settings.faz_max_results}
 

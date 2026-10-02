@@ -11,6 +11,7 @@ URLs usadas:
   add    /logview/adom/{adom}/logsearch            cria tarefa de busca (apiver 3, limit/offset da página) -> tid
   get    /logview/adom/{adom}/logsearch/{tid}      lê a página até percentage = 100 (uma página por tarefa)
   delete /logview/adom/{adom}/logsearch/{tid}      libera a tarefa no FAZ
+  get    /eventmgmt/adom/{adom}/alerts             alertas do Event Monitor (perfil: Event Management)
 """
 import itertools
 import threading
@@ -134,6 +135,33 @@ class FazClient:
                     break  # página incompleta e o total não indica mais eventos
         more = len(rows) >= limit and total <= len(rows)  # página cheia: pode haver mais do que o total informado
         return {"total": max(total, len(rows)), "returned": len(rows), "logs": rows, "mais": more or total > len(rows)}
+
+    # ---- Event Monitor (alertas dos event handlers) ---------------------------
+    ALERT_PAGE = 1000  # a API aceita até 2000 por leitura
+
+    def list_alerts(self, adom: str, start: str, end: str, limit: int = 2000) -> dict:
+        """Alertas do período, do mais novo para o mais antigo, em páginas (limit/offset)."""
+        alerts: list = []
+        with timed(self.source, "eventmgmt/alerts"):
+            while len(alerts) < limit:
+                size = min(self.ALERT_PAGE, limit - len(alerts))
+                res = self.call("get", f"/eventmgmt/adom/{adom}/alerts", apiver=3, limit=size, offset=len(alerts),
+                                **{"time-order": "desc", "time-range": {"start": start, "end": end}})
+                if isinstance(res, dict):
+                    status = res.get("status") or {}
+                    if isinstance(status, dict) and status.get("code", 0) not in (0, None):
+                        msg = status.get("message", "erro")
+                        if status.get("code") == -11:
+                            msg = "sem permissão para este recurso (perfil do administrador REST)"
+                        raise FazError(f"/eventmgmt/adom/{adom}/alerts: {msg}")
+                    page = res.get("data") or []
+                else:
+                    page = res or []
+                page = [a for a in page if isinstance(a, dict)]
+                alerts.extend(page)
+                if len(page) < size:
+                    break
+        return {"alerts": alerts[:limit], "mais": len(alerts) >= limit}
 
     def _search_page(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
                      devices: list[str] | None, offset: int, limit: int) -> tuple[list, int | None]:

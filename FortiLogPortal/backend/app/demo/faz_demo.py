@@ -25,9 +25,17 @@ SITES = [
     ("portal.maristabrasil.org", "Education", "passthrough", ""),
     ("www.youtube.com", "Streaming Media and Download", "passthrough", ""),
     ("arquivo-proibido.example", "", "blocked", "urlfilter"),
+    ("login-banco.phish.example", "Phishing", "blocked", "ftgd_blk"),
 ]
 APPS = [("Facebook", "Social.Media", "block"), ("BitTorrent", "P2P", "block"), ("Microsoft.Teams", "Collaboration", "pass"),
-        ("YouTube", "Video/Audio", "pass"), ("Tor", "Proxy", "block")]
+        ("YouTube", "Video/Audio", "pass"), ("Tor", "Proxy", "block"), ("Emotet.Botnet", "Botnet", "block")]
+# IPS: (assinatura, severidade, ação, entrada?)
+ATTACKS = [("MS.SMB.Server.SMB1.Trans2.Secondary.Handling.Code.Execution", "critical", "dropped", False),
+           ("Apache.Log4j.Error.Log.Remote.Code.Execution", "critical", "dropped", True),
+           ("HTTP.URI.SQL.Injection", "high", "detected", True), ("Nmap.Script.Scanner", "low", "detected", True),
+           ("Mirai.Botnet.Command", "high", "dropped", False)]
+VIRUSES = [("W32/Emotet.ABC!tr", "blocked", "fatura.doc"), ("JS/Agent.NXK!tr", "blocked", "script.js"),
+           ("EICAR_TEST_FILE", "blocked", "eicar.com"), ("W32/Qakbot.A!tr", "passthrough", "relatorio.xls")]
 # (sistema, tipo, fabricante, prefixo do nome); None = firewall sem identificação de dispositivos nessa rede
 DEVICE_KINDS = [None, ("Windows", "Windows PC", "Dell", "NB-ADM"), ("Android", "Android Phone", "Samsung", "Galaxy"),
                 ("iOS", "iPhone", "Apple", "iPhone"), ("Windows", "Windows PC", "Lenovo", "PC-LAB"), ("macOS", "Mac", "Apple", "MacBook")]
@@ -91,6 +99,24 @@ class DemoFazClient:
                          "dstport": 443, "profile": "AppControl_Padrao", "hostname": f"{app.lower()}.com"})
             if base["policyid"] == 0:
                 base["policyid"], base["policyname"] = 1, "Internet_Corporativa"
+        elif logtype == "ips":
+            attack, sev, action, inbound = rnd.choice(ATTACKS)
+            ext = f"185.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}"
+            if inbound:
+                base.update({"srcip": ext, "dstip": base["srcip"], "user": ""})
+                for k in ("srcname", "srcmac", "osname", "devtype", "srchwvendor"):
+                    base.pop(k, None)
+            else:
+                base["dstip"] = ext
+            base.update({"attack": attack, "severity": sev, "action": action, "dstport": rnd.choice([445, 80, 443]),
+                         "direction": "incoming" if inbound else "outgoing", "profile": "IPS_Padrao",
+                         "ref": "http://www.fortinet.com/ids/VID12345", "msg": f"applications3: {attack}"})
+        elif logtype == "virus":
+            virus, action, fname = rnd.choice(VIRUSES)
+            host = rnd.choice(["downloads.example", "mail.example"])
+            base.update({"virus": virus, "action": action, "filename": fname, "hostname": host, "url": f"/{fname}",
+                         "dstip": f"104.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}", "dstport": 443,
+                         "profile": "AV_Padrao", "msg": "File is infected."})
         elif logtype == "dns":
             host, cat, action, _ = rnd.choice(SITES)
             base.update({"qname": host, "hostname": host, "catdesc": cat, "dstip": "8.8.8.8", "dstport": 53,
@@ -129,6 +155,33 @@ class DemoFazClient:
             if ok == (op == "!="):
                 return False
         return True
+
+    def list_alerts(self, adom, start, end, limit=2000):
+        """Alertas do Event Monitor no formato da API (handlers padrão de IOC e botnet, mais outros)."""
+        t0 = datetime.strptime(start, "%Y-%m-%d %H:%M:%S")
+        t1 = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
+        span = max(60, int((t1 - t0).total_seconds()))
+        rnd = random.Random(f"alerts{start[:13]}{end[:13]}")
+        hosts = [("NB-ADM-12045", "10.12.12.45", "joao.silva"), ("Galaxy-21107", "10.21.11.107", "maria.souza"),
+                 ("PC-LAB-30200", "10.30.30.200", ""), ("MacBook-15088", "10.15.10.88", "ana.lima")]
+        handlers = [("Default-Compromised Host-Detection-IOC-By-Threat", "critical", "Emotet", "c2.emotet.example"),
+                    ("Default-Botnet-Communication-Detection-By-Endpoint", "high", "Mirai", "cnc.mirai.example"),
+                    ("Default-Compromised Host-Detection-IOC-By-Threat", "high", "Phishing.Kit", "login-banco.phish.example"),
+                    ("Default-Risky-Destination-Detection-By-Endpoint", "medium", "", "")]
+        alerts = []
+        for i in range(min(limit, 18)):
+            name, ip, user = rnd.choice(hosts)
+            handler, sev, threat, domain = rnd.choice(handlers)
+            when = t1 - timedelta(seconds=rnd.randint(0, span))
+            alerts.append({"alertid": f"2026{i:014d}", "triggername": handler, "severity": sev, "epid": str(1000 + i),
+                           "epname": name, "epip": ip, "devname": rnd.choice(DEVICES)["name"],
+                           "alerttime": int(when.timestamp()), "ackflag": "yes" if i % 5 == 0 else "no",
+                           "subject": f"{threat or 'Destino de risco'} detectado em {name}" + (f" ({domain})" if domain else ""),
+                           "groupby1": f"threat:{threat}" if threat else f"endpoint:{name}",
+                           "groupby2": f"user:{user}" if user else f"endpoint:{name}",
+                           "target": [{"name": "domain", "value": domain}] if domain else []})
+        alerts.sort(key=lambda a: a["alerttime"], reverse=True)
+        return {"alerts": alerts, "mais": False}
 
     def search_logs(self, adom, logtype, start, end, filter_expr="", devices=None, limit=500):
         t0 = datetime.strptime(start, "%Y-%m-%d %H:%M:%S")

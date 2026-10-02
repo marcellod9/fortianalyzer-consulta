@@ -24,10 +24,23 @@ no Fortinet Developer Network (FNDN):
 A aba **Relatórios** usa a mesma busca (filtro web e controle de aplicações), então não precisa de
 permissão extra além de *Log View*.
 
+A aba **Ameaças** usa a mesma busca nos logs de IPS, antivírus, filtro web (sites maliciosos e phishing),
+controle de aplicações (botnet) e DNS, e também:
+
+| URL | Uso |
+|---|---|
+| `get /eventmgmt/adom/{adom}/alerts` (apiver 3, `time-range`, `limit`, `offset`) | alertas do Event Monitor. A aba mostra os dos handlers de IOC e botnet (ex.: *Compromised Host Detection IOC By Threat*, *Botnet Communication Detection*), agrupados por máquina |
+
+A tabela *FortiView > Threats > Indicator of Compromise* não tem consulta na API de IOC (`/ioc/...` só tem
+licença, nova varredura e ACK). As mesmas detecções chegam como alertas do Event Monitor, desde que os
+handlers padrão de IOC estejam habilitados (*Incidents & Events > Handlers*). Essa leitura exige
+**Event Management: Read-Only** no perfil. Sem essa permissão, a aba mostra o aviso e continua com o ranking dos logs.
+
 ### Criar o acesso (no FortiAnalyzer)
 
 1. **System Settings > Admin > Profiles**: crie um perfil **somente leitura** com *Log View*
-   (Read-Only) e *Device Manager* (Read-Only). Os demais itens em *None*.
+   (Read-Only), *Device Manager* (Read-Only) e, para a aba Ameaças, *Event Management* (Read-Only).
+   Os demais itens em *None*.
 2. **System Settings > Admin > Administrators > Create New**:
    - *Admin Type*: **REST API Admin**;
    - *Admin Profile*: o perfil acima;

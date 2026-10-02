@@ -73,6 +73,7 @@ Credenciais **não** ficam no banco.
 | GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |
 | POST | `/api/correlation` | `{indicator, start, end, adom}` |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
+| POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos |
 | POST | `/api/reports` | `{tipo: geral\|usuario\|ip\|site\|aplicacao, valor, start, end, adom, devices, somente_bloqueios, top}`: relatório com os dados dos gráficos e `report_id` |
 | GET | `/api/reports/{report_id}.pdf\|xlsx` | baixa o relatório (1 h) |
 | GET | `/api/history?type=&q=` | histórico |

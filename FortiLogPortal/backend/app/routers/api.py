@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation
+from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -330,6 +330,20 @@ def export_result(result_id: str, fmt: str, request: Request):
     database.add_history(who(request), "exportacao", f"{data['title']} ({fmt})", "ok", result_count=len(data["rows"]),
                          summary=filename)
     return _download(content, filename, fmt)
+
+
+# ---- ameaças -----------------------------------------------------------------------------------
+@router.post("/threats")
+def threat_overview(q: threats.ThreatQuery, request: Request, cache: bool = True):
+    """Máquinas comprometidas (alertas de IOC/botnet do Event Monitor) e ranking de ameaças dos logs."""
+    with tracked(request, "ameacas", f"Ameaças {q.start:%Y-%m-%d %H:%M} a {q.end:%Y-%m-%d %H:%M}",
+                 q.model_dump(mode="json")) as info:
+        out = threats.run(q, use_cache=cache)
+        info.update(count=out["resumo"]["eventos"], blocked=out["resumo"]["bloqueados"],
+                    summary=f"{out['resumo']['eventos']} eventos de ameaça, {out['resumo']['comprometidas']} máquina(s) com alerta de IOC")
+    rid = store_result("ameacas", "Eventos de ameaça", threats.EVENT_COLUMNS, out["eventos"],
+                       {"Período": f"{out['periodo']['inicio']} a {out['periodo']['fim']}"})
+    return {**{k: v for k, v in out.items() if k != "eventos"}, "result_id": rid, "eventos_exportaveis": len(out["eventos"])}
 
 
 # ---- relatórios ------------------------------------------------------------------------------
