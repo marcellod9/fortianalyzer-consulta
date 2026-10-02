@@ -62,6 +62,9 @@ no período (FortiView `top-sources`; se a versão não tiver essa visão, os 50
 inventário `GET /v3.0/endpointSecurity/endpoints` (campos `endpointName`, `lastUsedIp`, `ipAddresses`,
 `eppAgent.status`, `eppAgent.lastConnectedDateTime`, `edrSensor.connectivity`, os mesmos do SDK oficial pytmv1),
 lido até `V1_INVENTORY_MAX` endpoints e guardado 30 minutos. O cruzamento é pelo nome da máquina e, sem nome, pelo IP.
+A máquina que não vier nessa lista é procurada uma a uma no Endpoint Inventory (`GET /v3.0/eiqs/endpoints` com
+TMV1-Query pelo nome e pelo IP, até 300 máquinas) e a situação do agente vem de `GET /v3.0/endpointSecurity/endpoints/{id}`,
+como na busca de máquina; só quem não é achado por nenhum dos dois aparece como **Sem Trend**.
 A chave de API precisa visualizar o Endpoint Inventory.
 
 ### Criar o acesso (no FortiAnalyzer)

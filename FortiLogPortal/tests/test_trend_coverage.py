@@ -39,6 +39,9 @@ def test_run_classifies_machines(monkeypatch):
     class V1:
         def endpoints(self, max_items):
             return eps
+
+        def search_endpoints(self, query, max_items=20):
+            return []
     monkeypatch.setattr(tc, "machines_from_faz", lambda q: (machines, "teste", []))
     monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
     monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
@@ -62,3 +65,33 @@ def test_api_trend_inactive_demo():
         assert {x["estado"] for x in d["linhas"]} <= {"desligado", "sem_contato", "sem_trend", "desconhecido"}
         assert all(x["firewall"] == "FW-BRASILIA" for x in d["linhas"])
         assert c.get(f"/api/export/{d['result_id']}.csv").status_code == 200
+
+
+def test_machine_missing_from_list_is_looked_up_one_by_one(monkeypatch):
+    """A lista não trouxe a máquina, mas o Endpoint Inventory acha pelo nome: não pode aparecer como sem Trend."""
+    machines = [{"ip": "10.55.10.67", "maquina": "NA055PE0B2VCA", "mac": "e0:0a:f6:b4:10:d1", "usuario": "FELIPE.RSANTOS",
+                 "sistema": "Windows", "tipo": "", "rede": "Rede_Adm", "firewall": "fw-br-al-maceio055",
+                 "visto": "2026-10-02 12:34:00", "sessoes": 1}]
+    queries = []
+
+    class V1:
+        def endpoints(self, max_items):
+            return []
+
+        def search_endpoints(self, query, max_items=20):
+            queries.append(query)
+            return [{"agentGuid": "f0518f89", "endpointName": {"value": "NA055PE0B2VCA"}, "ip": {"value": ["10.55.10.67"]}}]
+
+        def endpoint_details(self, guid):
+            return {"endpointName": "NA055PE0B2VCA", "lastUsedIp": "10.55.10.67",
+                    "lastLoggedOnUser": "NA055PE0B2VCA\\felipe.rsantos",
+                    "eppAgent": {"status": "on", "lastConnectedDateTime": _ts(0), "endpointGroup": "Workgroup"},
+                    "edrSensor": {"connectivity": "connected", "lastConnectedDateTime": _ts(0)}}
+    monkeypatch.setattr(tc, "machines_from_faz", lambda q: (machines, "teste", []))
+    monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
+    monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
+    monkeypatch.setattr(tc.database, "cache_set", lambda *a, **k: None)
+    out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW, incluir_ativos=True))
+    assert out["resumo"]["ativos"] == 1 and out["resumo"]["sem_trend"] == 0
+    assert out["linhas"][0]["achado_por"].startswith("nome") and out["linhas"][0]["grupo"] == "Workgroup"
+    assert "ip eq '10.55.10.67'" in queries[0] and "endpointName eq 'NA055PE0B2VCA'" in queries[0]

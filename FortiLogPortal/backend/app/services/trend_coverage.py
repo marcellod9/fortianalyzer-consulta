@@ -21,7 +21,7 @@ from ..config import settings
 from . import explain, visionone
 from .fortianalyzer import FazError
 from .fortianalyzer import get_client as faz_client
-from .machine import _agent, _parse_ts, norm_host, norm_user
+from .machine import NAME_RE, _agent, _parse_ts, _value, build_query, norm_host, norm_user
 from .threats import ThreatQuery
 from .visionone import V1Error
 
@@ -31,6 +31,8 @@ SOURCES_TOP = 3000        # linhas do FortiView Top Sources
 LOG_ROWS = 5000           # logs de tráfego lidos quando não há FortiView
 INVENTORY_TTL = 1800      # inventário do Vision One em cache (30 min)
 SHOW_MAX = 3000
+LOOKUP_MAX = 300          # máquinas fora da lista procuradas uma a uma no inventário (Endpoint Inventory)
+LOOKUP_BATCH = 10         # máquinas por consulta TMV1-Query
 # o que o FortiGate identifica como celular, TV, impressora etc.: não leva agente Trend
 NOT_COMPUTER = ("android", "ios", "iphone", "ipad", "phone", "tablet", "printer", "impressora", "camera", "tv",
                 "playstation", "xbox", "nintendo", "chromecast", "roku", "router", "switch", "access point", "voip")
@@ -164,6 +166,39 @@ def index(eps: list[dict]) -> tuple[dict, dict]:
     return by_name, by_ip
 
 
+def lookup_missing(client, machines: list[dict]) -> tuple[list[dict], list[str]]:
+    """Procura no Endpoint Inventory (GET /eiqs/endpoints, TMV1-Query) as máquinas que não vieram na lista e lê a
+    situação do agente de cada uma achada (GET /endpointSecurity/endpoints/{id}), como na busca de máquina."""
+    found: dict[str, dict] = {}
+    falhas: list[str] = []
+    for i in range(0, len(machines), LOOKUP_BATCH):
+        batch = machines[i:i + LOOKUP_BATCH]
+        query = " or ".join(build_query(m["ip"] if _private(m["ip"]) else None,
+                                        m["maquina"] if NAME_RE.fullmatch(m["maquina"] or "") else None) for m in batch)
+        try:
+            invs = client.search_endpoints(query, max_items=len(batch) * 3)
+        except (V1Error, ValueError) as e:
+            falhas.append(str(e))
+            if getattr(e, "status", None) in (401, 403):
+                break
+            continue
+        for inv in invs:
+            guid = inv.get("agentGuid")
+            if not guid or guid in found:
+                continue
+            try:
+                det = client.endpoint_details(guid)
+            except V1Error as e:
+                falhas.append(str(e))
+                det = {}
+            name = str(_value(inv.get("endpointName")) or det.get("endpointName") or "")
+            ips = [str(x) for x in (_value(inv.get("ip")) or [])] + ([det["lastUsedIp"]] if det.get("lastUsedIp") else [])
+            found[guid] = {"agentGuid": guid, "endpointName": name, "lastUsedIp": det.get("lastUsedIp"), "ipAddresses": ips,
+                           "osName": inv.get("osName"), "lastLoggedOnUser": det.get("lastLoggedOnUser"),
+                           "eppAgent": det.get("eppAgent"), "edrSensor": det.get("edrSensor"), "_busca": True}
+    return list(found.values()), falhas
+
+
 # ---- cruzamento ---------------------------------------------------------------------------------
 def run(q: CoverageQuery, refresh: bool = False) -> dict:
     machines, origem, avisos = machines_from_faz(q)
@@ -182,13 +217,33 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
             msg += " Na função (role) da chave de API no Vision One, marque a permissão de visualizar o Endpoint Inventory."
         raise V1Error(msg, e.status)
     by_name, by_ip = index(eps)
+
+    def match(m):
+        if m["maquina"] and norm_host(m["maquina"]) in by_name:
+            return by_name[norm_host(m["maquina"])], "nome"
+        if m["ip"] in by_ip:
+            return by_ip[m["ip"]], "IP"
+        return None, ""
+
+    # a lista pode não trazer todas as máquinas (limite, grupos da chave): as que faltaram são procuradas uma a uma
+    missing = [m for m in machines if not match(m)[0]]
+    extra, falhas = lookup_missing(client, missing[:LOOKUP_MAX])
+    if extra:
+        n2, i2 = index(extra)
+        for k, v in n2.items():
+            by_name.setdefault(k, v)
+        for k, v in i2.items():
+            by_ip.setdefault(k, v)
+    if falhas:
+        avisos.append("A busca individual no Endpoint Inventory falhou para parte das máquinas: " + falhas[0])
+    if len(missing) > LOOKUP_MAX:
+        avisos.append(f"{len(missing) - LOOKUP_MAX} máquina(s) não foram procuradas uma a uma (limite de {LOOKUP_MAX}); "
+                      "escolha um firewall ou um período menor.")
     rows, count = [], Counter()
     for m in machines:
-        ep, por = None, ""
-        if m["maquina"] and norm_host(m["maquina"]) in by_name:
-            ep, por = by_name[norm_host(m["maquina"])], "nome"
-        elif m["ip"] in by_ip:
-            ep, por = by_ip[m["ip"]], "IP"
+        ep, por = match(m)
+        if ep and ep.get("_busca"):
+            por += " (busca no inventário)"
         if ep:
             ag = _agent(ep)
             estado = ag["estado"]
