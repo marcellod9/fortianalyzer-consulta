@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Relatórios{% endblock %}
+{% block heading %}<i class="bi bi-pie-chart"></i> Relatórios de acesso{% endblock %}
+{% block content %}
+<form id="form" class="card card-body mb-3 no-print" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Escolha o assunto e o período. O relatório junta os logs de filtro web (sites e categorias) e
+    de controle de aplicações do FortiAnalyzer, com gráficos, e pode ser baixado em PDF ou Excel.</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-2"><label class="form-label small">Relatório</label>
+      <select class="form-select form-select-sm" name="tipo" id="tipo">
+        <option value="geral">Geral (todos)</option><option value="usuario">Por usuário</option><option value="ip">Por IP de origem</option>
+        <option value="site">Por site</option><option value="aplicacao">Por aplicação</option></select></div>
+    <div class="col-md-8 col-lg-3 d-none" id="valorBox"><label class="form-label small" id="valorLabel">Usuário</label>
+      <input class="form-control form-control-sm" name="valor" id="valor" maxlength="256"></div>
+    <div class="col-md-4 col-lg-2"><label class="form-label small">Quando?</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="60">Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="720">Últimas 12 horas</option><option value="1440" selected>Último 1 dia</option>
+        <option value="10080">Últimos 7 dias</option><option value="43200">Últimos 30 dias</option>
+        <option value="n:60">Últimas N horas...</option><option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="2" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+    <div class="col-auto"><label class="form-label small">Itens por gráfico</label>
+      <select class="form-select form-select-sm" name="top"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>
+  </div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
+  <div class="collapse" id="advanced"><div class="row g-2 mt-1">
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+  </div></div>
+  <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+    <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-bar-chart"></i> Gerar relatório</button>
+    <div class="form-check form-check-inline mb-0 ms-1"><input class="form-check-input" type="checkbox" name="somente_bloqueios" id="sobl">
+      <label class="form-check-label small" for="sobl">Somente bloqueios</label></div>
+    <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM"><i class="bi bi-gear"></i></a>
+    <span id="downloads" class="ms-auto d-flex flex-wrap gap-1"></span>
+  </div>
+</form>
+<div id="report"></div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+<script src="/static/js/relatorios.js?v={{ asset_v }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => FLP.reports.init("{{ default_adom }}"));
+</script>
+{% endblock %}

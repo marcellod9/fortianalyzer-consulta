@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Correlação{% endblock %}
+{% block heading %}<i class="bi bi-diagram-3"></i> Correlação FortiAnalyzer + Vision One{% endblock %}
+{% block content %}
+<p class="text-body-secondary">Informe um domínio, URL ou IP. O portal mostra quem acessou (FortiAnalyzer), se foi bloqueado e por qual política, e a reputação no Vision One, com uma análise consolidada.</p>
+<form id="form" class="card card-body mb-3">
+  <div class="row g-2">
+    <div class="col-md-5"><label class="form-label small">Domínio, URL ou IP</label><input class="form-control form-control-sm" name="indicator" required placeholder="xyz.com"></div>
+    <div class="col-md-1"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+    {% include "_period.html" %}
+  </div>
+  <div class="mt-3 d-flex gap-2 align-items-center">
+    <button class="btn btn-primary" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-diagram-3"></i> Correlacionar</button>
+    <span id="exports" class="ms-auto"></span>
+  </div>
+</form>
+<div id="out" class="d-none">
+  <div class="card mb-3"><div class="card-body"><h6>Análise consolidada</h6><ul id="analise" class="mb-0"></ul></div></div>
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card h-100"><div class="card-body"><h6>FortiAnalyzer</h6><div id="faz"></div></div></div>
+    </div>
+    <div class="col-lg-7"><div id="v1"></div></div>
+  </div>
+  <div class="d-flex align-items-center mt-3"><h6 class="mb-0">Eventos relacionados</h6><span id="exportsEv" class="ms-auto"></span></div>
+  <div id="eventos" class="mt-2"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form"), btn = document.getElementById("btn");
+  FLP.setDefaultPeriod(document.getElementById("start"), document.getElementById("end"), 24);
+  FLP.loadAdomsAndDevices(document.getElementById("adom"), null, "{{ default_adom }}");
+  const list = (pairs) => (pairs || []).map(([k, n]) => `<li><span title="${FLP.esc(k)}">${FLP.esc(k || "-")}</span><span class="badge text-bg-secondary">${n}</span></li>`).join("") || "<li><span>-</span></li>";
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    FLP.busy(btn, true);
+    try {
+      const c = await FLP.api("/api/correlation", { method: "POST", body: FLP.formData(form) });
+      document.getElementById("out").classList.remove("d-none");
+      document.getElementById("analise").innerHTML = c.analise.map((l) => `<li>${FLP.esc(l)}</li>`).join("");
+      const f = c.fortianalyzer;
+      document.getElementById("faz").innerHTML = f ? `
+        <div class="d-flex gap-4 mb-2"><div><div class="stat-card"><div class="label">Bloqueios</div><div class="value text-danger">${f.bloqueios}</div></div></div>
+        <div><div class="stat-card"><div class="label">Permitidos</div><div class="value text-success">${f.permitidos}</div></div></div></div>
+        <div class="small fw-semibold">Usuários / IPs</div><ul class="list-unstyled top-list small">${list(f.usuarios)}</ul>
+        <div class="small fw-semibold">Políticas</div><ul class="list-unstyled top-list small">${list(f.politicas)}</ul>
+        <div class="small fw-semibold">Motivos</div><ul class="list-unstyled top-list small">${list(f.motivos)}</ul>`
+        : `<div class="alert alert-warning small">${FLP.esc(c.erros.fortianalyzer || "Sem dados")}</div>`;
+      if (c.visionone) FLP.renderReputation(document.getElementById("v1"), c.visionone);
+      else document.getElementById("v1").innerHTML = `<div class="alert alert-warning small">Vision One: ${FLP.esc(c.erros.visionone || "sem dados")}</div>`;
+      FLP.renderLogTable(document.getElementById("eventos"), (f && f.eventos) || []);
+      FLP.exportButtons(document.getElementById("exports"), c.result_id);
+      FLP.exportButtons(document.getElementById("exportsEv"), c.eventos_result_id);
+    } catch (e) { FLP.toast(e.message, "danger"); }
+    finally { FLP.busy(btn, false); }
+  });
+});
+</script>
+{% endblock %}

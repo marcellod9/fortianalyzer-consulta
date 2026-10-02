@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Acessos{% endblock %}
+{% block heading %}<i class="bi bi-people"></i> Acessos ao portal{% endblock %}
+{% block content %}
+{% if not auth_enabled %}
+<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle"></i> O login Microsoft está desativado (<code>AUTH_MODE=off</code>):
+  hoje todos usam todas as abas. Você já pode cadastrar quem emite relatórios; vale assim que o login for ativado (<code>AUTH_MODE=entra</code>).</div>
+{% endif %}
+<div class="card mb-3"><div class="card-body">
+  <h6>Liberar relatórios para um usuário</h6>
+  <p class="small text-body-secondary mb-2">Informe o e-mail corporativo. A pessoa não precisa ter entrado no portal antes:
+    no primeiro login a permissão é ligada à conta dela no Entra ID.</p>
+  <form id="grantForm" class="d-flex flex-wrap gap-2" autocomplete="off">
+    <input class="form-control form-control-sm" style="max-width:22rem" type="email" id="grantEmail" placeholder="nome.sobrenome@marista.org.br" required maxlength="254">
+    <button class="btn btn-sm btn-primary"><i class="bi bi-person-plus"></i> Liberar relatórios</button>
+  </form>
+  <div class="small text-body-secondary mt-2" id="roleHint"></div>
+</div></div>
+<div class="card"><div class="card-body">
+  <div class="d-flex align-items-center gap-2 mb-2"><h6 class="mb-0 me-auto">Usuários</h6>
+    <input class="form-control form-control-sm" style="max-width:16rem" id="userSearch" placeholder="Filtrar por nome ou e-mail"></div>
+  <div class="table-responsive"><table class="table table-sm small align-middle">
+    <thead><tr><th>Nome</th><th>E-mail</th><th>Último login</th><th>Emite relatórios</th><th>Alterado por</th><th></th></tr></thead>
+    <tbody id="users"></tbody></table></div>
+  <div class="small text-body-secondary">Toda alteração fica registrada no Histórico (tipo Permissão) e em <code>logs\auditoria.log</code>.</div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const esc = FLP.esc;
+  let rows = [];
+  const body = document.getElementById("users"), search = document.getElementById("userSearch");
+
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    const list = rows.filter((r) => !q || (r.name || "").toLowerCase().includes(q) || r.upn.includes(q));
+    body.innerHTML = list.map((r) => {
+      const fixed = r.admin ? `<span class="badge text-bg-primary">Administrador</span>` : "";
+      const sw = r.admin ? fixed : `<div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" data-id="${r.id}" ${r.can_reports ? "checked" : ""}
+        aria-label="Emite relatórios"></div>`;
+      return `<tr><td>${esc(r.name || "")}${r.oid ? "" : ` <span class="badge text-bg-secondary" title="Ainda não entrou no portal">aguardando 1º login</span>`}</td>
+        <td>${esc(r.upn)}</td><td>${esc(r.last_login || "-")}</td><td>${sw}</td>
+        <td>${esc(r.updated_by || "")}${r.updated_at ? `<div class="text-body-secondary">${esc(r.updated_at)}</div>` : ""}</td>
+        <td class="text-end">${r.admin ? "" : `<button class="btn btn-sm btn-link text-danger p-0" data-del="${r.id}" title="Remover do portal e encerrar as sessões"><i class="bi bi-trash"></i></button>`}</td></tr>`;
+    }).join("") || `<tr><td colspan="6" class="text-body-secondary">Ninguém cadastrado ainda. Quem entra pelo login Microsoft aparece aqui.</td></tr>`;
+  }
+
+  async function load() {
+    const d = await FLP.api("/api/acessos");
+    rows = d.usuarios;
+    document.getElementById("roleHint").innerHTML = `Também têm acesso a relatórios, sem cadastro aqui, os administradores (<code>PORTAL_ADMINS</code>)
+      e quem tiver a função de aplicativo <code>${esc(d.funcao_relatorios)}</code> no Entra ID.`;
+    draw();
+  }
+
+  document.getElementById("grantForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const inp = document.getElementById("grantEmail");
+    try {
+      await FLP.api("/api/acessos", { method: "POST", body: { email: inp.value.trim(), relatorios: true } });
+      FLP.toast(`Relatórios liberados para ${inp.value.trim()}`, "success");
+      inp.value = "";
+      load();
+    } catch (e) { FLP.toast(e.message, "danger"); }
+  });
+  body.addEventListener("change", async (ev) => {
+    const id = ev.target.dataset.id;
+    if (!id) return;
+    try {
+      await FLP.api(`/api/acessos/${id}`, { method: "PUT", body: { email: rows.find((r) => r.id == id).upn, relatorios: ev.target.checked } });
+      FLP.toast(ev.target.checked ? "Relatórios liberados" : "Relatórios retirados", "success");
+      load();
+    } catch (e) { ev.target.checked = !ev.target.checked; FLP.toast(e.message, "danger"); }
+  });
+  body.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-del]");
+    if (!b) return;
+    const r = rows.find((x) => x.id == b.dataset.del);
+    if (!confirm(`Remover ${r.upn} do portal? As sessões abertas dessa pessoa serão encerradas.`)) return;
+    try { await FLP.api(`/api/acessos/${r.id}`, { method: "DELETE" }); load(); } catch (e) { FLP.toast(e.message, "danger"); }
+  });
+  search.addEventListener("input", draw);
+  load().catch((e) => FLP.toast(e.message, "danger"));
+});
+</script>
+{% endblock %}

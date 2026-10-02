@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Ameaças{% endblock %}
+{% block heading %}<i class="bi bi-bug"></i> Ameaças{% endblock %}
+{% block content %}
+<ul class="nav nav-tabs mb-3 no-print" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#paneOverview" type="button" role="tab">
+    <i class="bi bi-clipboard-data"></i> Visão geral</button></li>
+  <li class="nav-item"><button class="nav-link" id="tabLive" data-bs-toggle="tab" data-bs-target="#paneLive" type="button" role="tab">
+    <i class="bi bi-broadcast"></i> Mapa em tempo real</button></li>
+  <li class="nav-item"><button class="nav-link" id="tabTrend" data-bs-toggle="tab" data-bs-target="#paneTrend" type="button" role="tab">
+    <i class="bi bi-shield-slash"></i> Trend inativo</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="paneOverview" role="tabpanel">
+<form id="form" class="card card-body mb-3 no-print" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Máquinas com alerta de comprometimento (IOC e botnet do Event Monitor do FortiAnalyzer)
+    e as ameaças vistas nos logs: IPS, antivírus, sites maliciosos e phishing, botnet, domínios maliciosos no DNS e tráfego com ameaça (reputação do FortiGate).</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-2"><label class="form-label small">Quando?</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="60">Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="1440" selected>Último 1 dia</option><option value="10080">Últimos 7 dias</option>
+        <option value="43200">Últimos 30 dias</option>
+        <option value="n:60">Últimas N horas...</option><option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="2" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+    <div class="col-auto">
+      <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button>
+      <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM"><i class="bi bi-gear"></i></a>
+    </div>
+    <div class="col-auto ms-auto" id="downloads"></div>
+  </div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
+  <div class="collapse" id="advanced"><div class="row g-2 mt-1">
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+  </div></div>
+</form>
+<div id="result"></div>
+</div>
+<div class="tab-pane fade" id="paneLive" role="tabpanel">
+  <form id="liveForm" class="d-flex flex-wrap gap-2 align-items-end mb-2" autocomplete="off">
+    <div style="min-width:16rem"><label class="form-label small mb-1">Firewall</label><div id="liveDevices"></div></div>
+    <div><label class="form-label small mb-1">Atualizar a cada</label>
+      <select class="form-select form-select-sm" id="liveEvery"><option value="15">15 s</option><option value="30" selected>30 s</option>
+        <option value="60">1 min</option></select></div>
+    <div><label class="form-label small mb-1">Velocidade</label>
+      <select class="form-select form-select-sm" id="liveSpeed"><option value="1">1x</option><option value="2" selected>2x</option>
+        <option value="4">4x</option></select></div>
+    <div class="form-check mb-1"><input class="form-check-input" type="checkbox" id="liveOnlyPass">
+      <label class="form-check-label small" for="liveOnlyPass">Só não bloqueadas</label></div>
+    <button type="button" class="btn btn-sm btn-primary" id="livePlay"><i class="bi bi-pause-fill"></i> Pausar</button>
+    <span class="small text-body-secondary ms-auto" id="liveStatus"></span>
+  </form>
+  <div class="live-map" id="liveMap">
+    <div class="live-feed" id="liveFeed" aria-live="polite"></div>
+    <div class="live-stats" id="liveStats"></div>
+    <div class="live-legend"><span><i style="background:#e66767"></i>Crítica</span><span><i style="background:#ff8a4c"></i>Alta</span>
+      <span><i style="background:#f2c14e"></i>Média</span><span><i style="background:#7cc4ff"></i>Baixa / outras</span>
+      <span><b class="live-ring"></b>Firewall</span></div>
+  </div>
+  <div class="small text-body-secondary mt-2">Eventos de ameaça dos últimos minutos (IPS, antivírus, sites maliciosos e phishing, botnet, DNS e tráfego com ameaça), lidos de novo a cada
+    atualização. O arco liga o firewall ao país do outro lado; a posição do firewall vem da localização cadastrada no FortiGate
+    (sem ela, o firewall aparece no Brasil). O FortiAnalyzer pode levar alguns minutos para receber os logs.</div>
+</div>
+<div class="tab-pane fade" id="paneTrend" role="tabpanel">
+<form id="trendForm" class="card card-body mb-3 no-print" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Máquinas que passaram pelo firewall da unidade e estão com o agente Trend desligado,
+    sem comunicação há 7 dias ou mais, ou fora do inventário do Vision One. Nome, usuário e MAC vêm da identificação de
+    dispositivos do FortiGate; a situação do agente vem do inventário de endpoints do Vision One.</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall (unidade)</label><div id="trendDevices"></div></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Vistas no firewall em</label>
+      <select class="form-select form-select-sm" id="trendPeriod">
+        <option value="60">Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="1440" selected>Último 1 dia</option><option value="10080">Últimos 7 dias</option></select></div>
+    <div class="col-auto"><div class="form-check"><input class="form-check-input" type="checkbox" id="trendPcs" checked>
+      <label class="form-check-label small" for="trendPcs" title="Só as máquinas que o FortiGate identifica como Windows (deixa de fora access points, celulares, impressoras e as sem sistema identificado)">Só Windows</label></div>
+      <div class="form-check"><input class="form-check-input" type="checkbox" id="trendActive">
+      <label class="form-check-label small" for="trendActive">Mostrar também as ativas</label></div></div>
+    <div class="col-auto">
+      <button class="btn btn-primary btn-sm" id="trendBtn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="trendRefresh" title="Lê de novo o inventário do Vision One (fica 30 minutos em cache)"><i class="bi bi-arrow-repeat"></i> Inventário</button></div>
+    <div class="col-auto ms-auto" id="trendDownloads"></div>
+  </div>
+</form>
+<div id="trendResult"></div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+<script src="/static/js/relatorios.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas_live.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas_trend.js?v={{ asset_v }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  FLP.threats.init("{{ default_adom }}", {{ 'true' if can_reports else 'false' }});
+  FLP.threatsLive.init();
+  FLP.threatsTrend.init();
+});
+</script>
+{% endblock %}

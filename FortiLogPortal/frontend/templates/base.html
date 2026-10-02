@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FortiLogPortal{% endblock %} · Marista Brasil</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v }}">
+  <link rel="icon" type="image/png" href="/static/img/marista-icone.png?v={{ asset_v }}">
+</head>
+<body data-sandbox="{{ 1 if sandbox_enabled else 0 }}">
+<aside class="flp-sidebar p-3 d-flex flex-column">
+  <a href="/" class="brand-logo mb-2" title="Início"><img src="/static/img/marista-brasil.png?v={{ asset_v }}" class="logo-light" alt="Marista Brasil"><img src="/static/img/marista-brasil-escuro.png?v={{ asset_v }}" class="logo-dark" alt="Marista Brasil"></a>
+  <a href="/" class="brand fs-6 mb-0 text-decoration-none"><i class="bi bi-shield-lock"></i> FortiLogPortal</a>
+  <div class="small text-body-secondary mb-3">Consultas de segurança · Sustentação</div>
+  <nav class="nav flex-column gap-1">
+    {% for path, name, title, icon in pages %}
+    <a class="nav-link {% if page == name %}active{% endif %}" href="{{ path }}"><i class="bi bi-{{ icon }} me-2"></i>{{ title }}</a>
+    {% endfor %}
+  </nav>
+  <div class="mt-auto pt-3 small text-body-secondary d-none d-lg-block">v{{ versao }} · POC local</div>
+</aside>
+
+<div class="flp-main">
+  <header class="d-flex align-items-center gap-2 px-4 py-2 border-bottom bg-body">
+    <h1 class="h5 mb-0 me-auto">{% block heading %}{% endblock %}</h1>
+    {% if user %}
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" style="max-width: 260px" data-bs-toggle="dropdown" title="{{ user.upn }}">
+        <i class="bi bi-person-check"></i> {{ user.name }}</button>
+      <ul class="dropdown-menu dropdown-menu-end small">
+        <li class="px-3 py-1 text-body-secondary">{{ user.upn }}</li>
+        <li class="px-3 pb-1 text-body-secondary">{% if user.admin %}Administrador do portal{% elif user.reports %}Pode emitir relatórios{% else %}Consultas{% endif %}</li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="/auth/logout"><i class="bi bi-box-arrow-right"></i> Sair</a></li>
+      </ul>
+    </div>
+    {% elif not auth_enabled %}
+    <div class="input-group input-group-sm" style="max-width: 260px" title="Identificação gravada no histórico (login Microsoft desativado: AUTH_MODE=off)">
+      <span class="input-group-text"><i class="bi bi-person"></i></span>
+      <input id="portalUser" class="form-control" placeholder="Seu nome/login">
+    </div>
+    {% endif %}
+    <button id="themeToggle" class="btn btn-sm btn-outline-secondary" title="Tema claro/escuro"><i id="themeIcon" class="bi bi-moon-stars"></i></button>
+  </header>
+  {% if demo %}
+  <div class="alert alert-warning rounded-0 mb-0 py-2 px-4 small"><i class="bi bi-exclamation-triangle"></i>
+    <strong>Modo demonstração:</strong> dados simulados (PORTAL_DEMO=true). Defina PORTAL_DEMO=false em config\.env para usar o FortiAnalyzer e o Vision One reais.</div>
+  {% endif %}
+  <main class="p-4">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<div class="modal fade" id="logModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Detalhes do evento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"></div>
+</div></div></div>
+<div id="toasts" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/js/app.js?v={{ asset_v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

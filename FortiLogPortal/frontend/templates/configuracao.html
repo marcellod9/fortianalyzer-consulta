@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Configuração{% endblock %}
+{% block heading %}<i class="bi bi-gear"></i> Configuração e diagnóstico{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card h-100"><div class="card-body">
+      <h6>Integrações</h6>
+      <p class="small text-body-secondary">Credenciais ficam somente em <code id="envfile"></code>. Esta tela nunca exibe tokens.</p>
+      <table class="table table-sm small" id="cfg"></table>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-sm btn-outline-primary" data-test="faz"><i class="bi bi-plug"></i> Testar FortiAnalyzer</button>
+        <button class="btn btn-sm btn-outline-primary" data-test="v1"><i class="bi bi-plug"></i> Testar Vision One</button>
+        <button class="btn btn-sm btn-outline-danger ms-auto" id="clearCache"><i class="bi bi-trash"></i> Limpar cache</button>
+      </div>
+      <div id="testResult" class="mt-2"></div>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100"><div class="card-body">
+      <h6>Tempo de resposta das APIs</h6>
+      <table class="table table-sm small"><thead><tr><th>Integração</th><th>Chamadas</th><th>Média</th><th>Máximo</th><th>Falhas</th></tr></thead><tbody id="perf"></tbody></table>
+    </div></div>
+  </div>
+  <div class="col-12">
+    <div class="card"><div class="card-body">
+      <div class="d-flex align-items-center mb-2"><h6 class="mb-0">Logs internos da aplicação</h6>
+        <select id="level" class="form-select form-select-sm ms-auto" style="width:auto"><option value="">Todos</option><option value="ERROR">Somente erros</option></select></div>
+      <div class="table-responsive" style="max-height: 420px"><table class="table table-sm table-striped small"><thead><tr><th>Data/hora</th><th>Nível</th><th>Origem</th><th>Mensagem</th><th>Tempo</th></tr></thead><tbody id="applog"></tbody></table></div>
+      <div class="small text-body-secondary">Arquivos completos em <code>logs\app.log</code>, <code>logs\auditoria.log</code> e <code>logs\integracoes.log</code>.</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const labels = { demo: "Modo demonstração", faz_url: "FortiAnalyzer URL", faz_token_definido: "Token FAZ definido", faz_verify_tls: "Verificação TLS FAZ",
+    faz_default_adom: "ADOM padrão", faz_max_results: "Máx. linhas por consulta", v1_base_url: "Vision One API", v1_token_definido: "Chave Vision One definida",
+    v1_lookback_days: "Janela de busca Vision One (dias)", v1_sandbox_enabled: "Sandbox habilitado", cache_ttl: "Cache (segundos)", db_path: "Banco SQLite",
+    auth_mode: "Login (AUTH_MODE)", entra_tenant_id: "Entra ID: locatário", entra_client_id: "Entra ID: aplicativo",
+    entra_credencial: "Entra ID: credencial", entra_redirect_uri: "Entra ID: URI de redirecionamento",
+    entra_auth_context: "Entra ID: contexto de autenticação (MFA)", portal_admins: "Administradores (PORTAL_ADMINS)" };
+  const fmt = (v) => v === true ? '<span class="badge text-bg-success">sim</span>' : v === false ? '<span class="badge text-bg-secondary">não</span>' : FLP.esc(v || "-");
+  async function load() {
+    const s = await FLP.api("/api/status");
+    document.getElementById("envfile").textContent = s.config.env_file;
+    document.getElementById("cfg").innerHTML = Object.entries(labels).map(([k, l]) => `<tr><th class="fw-normal text-body-secondary">${l}</th><td>${fmt(s.config[k])}</td></tr>`).join("");
+    document.getElementById("perf").innerHTML = s.integracoes.map((i) => `<tr><td>${FLP.esc(i.source)}</td><td>${i.chamadas}</td><td>${i.media_ms} ms</td><td>${i.max_ms} ms</td><td>${i.falhas}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="text-body-secondary">Sem chamadas registradas.</td></tr>`;
+    const lv = document.getElementById("level").value;
+    const logs = await FLP.api("/api/app-log?limit=300" + (lv ? "&level=" + lv : ""));
+    document.getElementById("applog").innerHTML = logs.map((l) => `<tr><td class="text-nowrap">${FLP.esc(l.ts)}</td>
+      <td><span class="badge text-bg-${l.level === "ERROR" ? "danger" : "secondary"}">${FLP.esc(l.level)}</span></td><td>${FLP.esc(l.source)}</td>
+      <td>${FLP.esc(l.message)}</td><td>${l.duration_ms ?? ""}</td></tr>`).join("");
+  }
+  document.querySelectorAll("[data-test]").forEach((b) => b.addEventListener("click", async () => {
+    FLP.busy(b, true);
+    try {
+      const r = await FLP.api(`/api/status/test/${b.dataset.test}`, { method: "POST" });
+      document.getElementById("testResult").innerHTML = r.ok
+        ? `<div class="alert alert-success small mb-0"><b>Conectado.</b> <code>${FLP.esc(JSON.stringify(r.detalhe))}</code></div>`
+        : `<div class="alert alert-danger small mb-0"><b>Falha:</b> ${FLP.esc(r.erro)}</div>`;
+      load();
+    } catch (e) { FLP.toast(e.message, "danger"); } finally { FLP.busy(b, false); }
+  }));
+  document.getElementById("clearCache").addEventListener("click", async () => {
+    const r = await FLP.api("/api/cache", { method: "DELETE" });
+    FLP.toast(`${r.removidos} item(ns) removido(s) do cache.`, "success");
+  });
+  document.getElementById("level").addEventListener("change", load);
+  load().catch((e) => FLP.toast(e.message, "danger"));
+});
+</script>
+{% endblock %}

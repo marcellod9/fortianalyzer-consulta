@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Diagnóstico{% endblock %}
+{% block heading %}<i class="bi bi-clipboard2-pulse"></i> Diagnóstico de acesso{% endblock %}
+{% block content %}
+<form id="form" class="card card-body mb-3" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Para chamados de "não consigo acessar": informe quem e, se souber, o site. O portal procura
+    bloqueios no filtro web, no controle de aplicações, no filtro DNS e nas regras do firewall, tudo de uma vez.</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-6 col-lg-4"><label class="form-label small">Quem? <span class="text-body-tertiary">usuário, IP, MAC ou máquina</span></label>
+      <div class="input-group input-group-sm">
+        <input class="form-control" name="quem" id="quem" required maxlength="256" placeholder="francisco.moreira · 10.54.176.161">
+        <select class="form-select" name="quem_tipo" style="max-width:10rem" title="Como procurar">
+          <option value="auto" selected>Detectar</option><option value="user">Usuário</option><option value="srcname">Nome da máquina</option></select>
+      </div></div>
+    <div class="col-md-6 col-lg-3"><label class="form-label small">Qual site ou IP? <span class="text-body-tertiary">opcional</span></label>
+      <input class="form-control form-control-sm" name="destino" maxlength="2048" placeholder="facebook.com · 8.8.8.8"></div>
+    <div class="col-md-4 col-lg-2"><label class="form-label small">Quando?</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="5">Últimos 5 minutos</option><option value="30">Últimos 30 minutos</option>
+        <option value="60" selected>Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="720">Últimas 12 horas</option><option value="1440">Último 1 dia</option>
+        <option value="10080">Últimos 7 dias</option>
+        <option value="n:1">Últimos N minutos...</option><option value="n:60">Últimas N horas...</option>
+        <option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="10" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-5 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+  </div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
+  <div class="collapse" id="advanced"><div class="row g-2 mt-1">
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+  </div></div>
+  <div class="mt-2 d-flex gap-2 align-items-center">
+    <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-clipboard2-pulse"></i> Diagnosticar</button>
+    <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM"><i class="bi bi-gear"></i></a>
+    <span id="exports" class="ms-auto"></span>
+  </div>
+</form>
+<div id="diag"></div>
+<div id="results"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form"), btn = document.getElementById("btn");
+  const diag = document.getElementById("diag"), results = document.getElementById("results");
+  const period = FLP.relativePeriod(document.getElementById("period"), document.getElementById("start"),
+                                    document.getElementById("end"), document.getElementById("custom"),
+                                    { box: document.getElementById("lastN"), input: document.getElementById("lastNValue"),
+                                      label: document.getElementById("lastNLabel") });
+  FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), "{{ default_adom }}");
+  const esc = FLP.esc;
+  const STATUS = {
+    bloqueado: ["danger", "bi-x-octagon-fill"], falha: ["warning", "bi-exclamation-triangle-fill"],
+    permitido: ["success", "bi-check-circle-fill"], sem_eventos: ["secondary", "bi-question-circle-fill"],
+  };
+  const time = (dt) => (dt || "").slice(11, 16);
+
+  const layerCard = (c) => {
+    const [cls, icon, text] = !c.aplica ? ["secondary", "bi-dash-circle", "Não se aplica"]
+      : c.erro ? ["warning", "bi-exclamation-triangle", "Não foi possível consultar"]
+      : c.bloqueios ? ["danger", "bi-x-octagon", `${c.bloqueios} bloqueio(s) · último às ${time(c.ultimo)}`]
+      : ["success", "bi-check-circle", "Nenhum bloqueio"];
+    const detail = c.nota || c.erro || c.motivo || "";
+    return `<div class="col-sm-6 col-xl-3"><div class="card h-100 border-${cls}" title="${esc(c.filtro || "")}">
+      <div class="card-body py-2"><div class="small fw-semibold">${esc(c.nome)}</div>
+        <div class="text-${cls} fw-semibold"><i class="bi ${icon}"></i> ${esc(text)}</div>
+        ${detail ? `<div class="small text-body-secondary mt-1">${esc(detail)}</div>` : ""}</div></div></div>`;
+  };
+
+  const ticketText = (r) => [
+    "Diagnóstico de acesso (FortiLogPortal)",
+    `Quem: ${r.quem}${r.origem.ips.length ? ` (IP: ${r.origem.ips.join(", ")})` : ""}${r.origem.maquinas.length ? ` - máquina: ${r.origem.maquinas.join(", ")}` : ""}`,
+    `Destino: ${r.destino || "(qualquer destino)"}`,
+    `Período: ${r.periodo.inicio} a ${r.periodo.fim}`,
+    `Resultado: ${r.titulo}`,
+    `Detalhe: ${r.resumo}`,
+    `Verificado: ${r.camadas.map((c) => `${c.nome}: ${!c.aplica ? "não se aplica" : c.erro ? "não consultado" : c.bloqueios ? `${c.bloqueios} bloqueio(s)` : "sem bloqueio"}`).join("; ")}`,
+    `O que fazer: ${r.orientacao}`,
+    ...(r._maq ? [FLP.machineTicketLine(r._maq)] : []),
+  ].join("\n");
+
+  function render(r) {
+    const [cls, icon] = STATUS[r.status] || STATUS.sem_eventos;
+    const seen = [["IP", r.origem.ips], ["Máquina", r.origem.maquinas], ["Usuário", r.origem.usuarios]]
+      .filter(([, v]) => v.length).map(([k, v]) => `${k}: <b>${v.map(esc).join(", ")}</b>`).join(" · ");
+    // máquina no Vision One: o IP, a máquina e o usuário pesquisados ou os mais vistos nos logs
+    const mq = r.maquina || {}, mqOk = !!(mq.ip || mq.nome || mq.usuario);
+    const mqLabel = [mq.nome, mq.ip, mq.usuario].filter(Boolean).join(" · ");
+    diag.innerHTML = `
+      <div class="alert alert-${cls} d-flex flex-wrap flex-sm-nowrap gap-3 align-items-start mb-2">
+        <i class="bi ${icon} fs-2"></i>
+        <div class="flex-grow-1"><div class="fs-5 fw-bold">${esc(r.titulo)}</div><div>${esc(r.resumo)}</div>
+          <div class="small mt-1">${esc(r.quem)} → ${esc(r.destino || "qualquer destino")} · ${esc(r.periodo.inicio)} a ${esc(r.periodo.fim)}</div></div>
+        <button type="button" class="btn btn-sm btn-light text-nowrap" data-act="copy"><i class="bi bi-clipboard"></i> Copiar para o chamado</button>
+      </div>
+      ${r.aviso ? `<div class="alert alert-warning small py-2 mb-2">${esc(r.aviso)}</div>` : ""}
+      <div class="card border-primary mb-3"><div class="card-body py-2">
+        <div class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer</div><div>${esc(r.orientacao)}</div></div></div>
+      <div class="row g-2 mb-2">${r.camadas.map(layerCard).join("")}</div>
+      ${seen || mqOk ? `<div class="small text-body-secondary mb-3 d-flex flex-wrap gap-2 align-items-center">${seen ? `<span><i class="bi bi-pc-display"></i> Visto nos logs com ${seen}</span>` : ""}
+        ${r.por_usuario ? r.origem.ips.slice(0, 3).map((ip) => `<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-ip="${esc(ip)}">Diagnosticar pelo IP ${esc(ip)}</button>`).join("") : ""}
+        ${mqOk ? `<button type="button" class="btn btn-sm btn-outline-primary py-0" data-act="machine" title="Agente Trend e alertas do Workbench de ${esc(mqLabel)}">
+          <span class="spinner-border spinner-border-sm spinner-overlay"></span><i class="bi bi-pc-display"></i> Ver máquina no Vision One</button>` : ""}</div>` : ""}
+      <div id="machine"></div>`;
+    diag.querySelector('[data-act="machine"]')?.addEventListener("click", (ev) =>
+      FLP.machineLookup(document.getElementById("machine"), mq, ev.currentTarget, { onResult: (d) => { r._maq = d; } }));
+    // o mesmo diagnóstico pelo IP da máquina (logs sem usuário, como os do filtro DNS em algumas redes)
+    diag.querySelectorAll("[data-ip]").forEach((b) => b.addEventListener("click", () => {
+      form.elements.quem.value = b.dataset.ip; form.elements.quem_tipo.value = "auto"; form.requestSubmit();
+    }));
+    diag.querySelector('[data-act="copy"]').addEventListener("click", async () => {
+      const text = ticketText(r);
+      try { await navigator.clipboard.writeText(text); } catch {
+        const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+      }
+      FLP.toast("Diagnóstico copiado. Cole no chamado.", "success");
+    });
+    FLP.renderLogTable(results, r.rows, { empty: "Nenhum evento para listar.", blockedOnly: r.status === "bloqueado" });
+  }
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    period.refresh();
+    FLP.busy(btn, true);
+    diag.innerHTML = `<div class="small text-body-secondary mb-3"><span class="spinner-border spinner-border-sm"></span>
+      Procurando no filtro web, no controle de aplicações, no filtro DNS e nas regras do firewall...</div>`;
+    results.innerHTML = "";
+    try {
+      const r = await FLP.api("/api/faz/diagnose", { method: "POST", body: FLP.formData(form) });
+      render(r);
+      FLP.exportButtons(document.getElementById("exports"), r.result_id);
+    } catch (e) { diag.innerHTML = ""; FLP.toast(e.message, "danger"); }
+    finally { FLP.busy(btn, false); }
+  });
+  document.getElementById("quem").focus();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block heading %}<i class="bi bi-list-ul"></i> Consulta de logs (FortiAnalyzer){% endblock %}
+{% block content %}
+<form id="form" class="card card-body mb-3" autocomplete="off">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall</label><div id="devices"></div></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Período</label>
+      <select class="form-select form-select-sm" id="period">
+        <option value="5">Últimos 5 minutos</option><option value="30">Últimos 30 minutos</option>
+        <option value="60" selected>Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="720">Últimas 12 horas</option><option value="1440">Último 1 dia</option>
+        <option value="10080">Últimos 7 dias</option>
+        <option value="n:1">Últimos N minutos...</option><option value="n:60">Últimas N horas...</option>
+        <option value="n:1440">Últimos N dias...</option>
+        <option value="0">Personalizado (data e hora)...</option></select></div>
+    <div class="col-auto d-none" id="lastN"><label class="form-label small" id="lastNLabel">Quantos?</label>
+      <input type="number" class="form-control form-control-sm" id="lastNValue" value="10" min="1" max="999" style="width:6rem"></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Tipo de log</label>
+      <select class="form-select form-select-sm" name="logtype">{% for k, v in logtypes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <div class="col-auto"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="only_blocked" id="ob"><label class="form-check-label small" for="ob">Somente bloqueios</label></div></div>
+    <div class="col-auto ms-lg-auto d-flex gap-2">
+      <button class="btn btn-primary btn-sm" id="btn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Pesquisar</button>
+      <div class="input-group input-group-sm w-auto">
+        <button type="button" class="btn btn-outline-danger" id="live" title="Mostra os eventos conforme chegam ao FortiAnalyzer, atualizando a lista sozinha">
+          <i class="bi bi-broadcast"></i> <span>Tempo real</span></button>
+        <select class="form-select form-select-sm" id="liveEvery" title="Atualizar a cada" aria-label="Atualizar a cada" style="max-width:5.5rem">
+          <option value="5">5 s</option><option value="10" selected>10 s</option>
+          <option value="30">30 s</option><option value="60">1 min</option></select>
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="clear">Limpar filtros</button>
+      <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#advanced" title="ADOM e limite de linhas"><i class="bi bi-gear"></i></a>
+    </div>
+  </div>
+  <div class="row g-2 mt-1 d-none" id="custom">
+    <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>
+  </div>
+  <div class="collapse" id="advanced"><div class="row g-2 mt-1">
+    <div class="col-md-2"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" name="adom" id="adom"></select></div>
+    <div class="col-md-2"><label class="form-label small">Limite de linhas</label><input type="number" class="form-control form-control-sm" name="limit" value="500" min="1" max="{{ max_results }}"></div>
+  </div></div>
+  <div class="mt-2 pt-2 border-top" id="filters"></div>
+  <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+    <span id="summary" class="small text-body-secondary"></span>
+    <span id="exports" class="ms-auto"></span>
+  </div>
+</form>
+<div id="results"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form"), btn = document.getElementById("btn");
+  const period = FLP.relativePeriod(document.getElementById("period"), document.getElementById("start"),
+                                    document.getElementById("end"), document.getElementById("custom"),
+                                    { box: document.getElementById("lastN"), input: document.getElementById("lastNValue"),
+                                      label: document.getElementById("lastNLabel") });
+  FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), "{{ default_adom }}");
+  const filters = FLP.filterBuilder(document.getElementById("filters"), () => form.requestSubmit());
+  document.getElementById("clear").addEventListener("click", () => { filters.clear(); document.getElementById("ob").checked = false; });
+
+  // botão direito na tabela: filtrar (=) ou excluir (≠) o valor e pesquisar de novo
+  const onFilter = (field, op, value) => {
+    if (!filters.has(field, op, value)) filters.add(field, op, value, false);
+    form.requestSubmit();
+  };
+
+  // ---- tempo real: repete a pesquisa da janela mais recente e junta os eventos novos no topo ----
+  // O FortiAnalyzer só mostra o log depois de recebê-lo e indexá-lo; por isso cada atualização
+  // olha os últimos minutos de novo (sobreposição) e descarta o que já está na tela.
+  const results = document.getElementById("results"), summary = document.getElementById("summary");
+  const liveBtn = document.getElementById("live"), liveEvery = document.getElementById("liveEvery");
+  const FIRST_WINDOW = 5 * 60000, OVERLAP = 3 * 60000, MAX_GAP = 60 * 60000, MAX_RUN = 60 * 60000, MAX_ERRORS = 3;
+  const live = { on: false, timer: null, gen: 0, busyGen: null, rows: [], keys: new Set(), table: null, query: null,
+                 lastOk: 0, startedAt: 0, errors: 0, filter: "" };
+  const pad = (n) => String(n).padStart(2, "0");
+  const localTime = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const clock = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const rowKey = (r) => JSON.stringify(r.log_original || r);
+  const baseQuery = () => {
+    const b = { ...FLP.formData(form), filters: filters.get() };
+    delete b.start; delete b.end;
+    return b;
+  };
+  const maxRows = () => Math.max(50, +form.elements.limit.value || 500);
+
+  const setLiveButton = () => {
+    liveBtn.classList.toggle("btn-danger", live.on);
+    liveBtn.classList.toggle("btn-outline-danger", !live.on);
+    liveBtn.querySelector("i").className = live.on ? "bi bi-pause-fill" : "bi bi-broadcast";
+    liveBtn.querySelector("span").textContent = live.on ? "Pausar" : (live.rows.length ? "Continuar tempo real" : "Tempo real");
+    document.getElementById("period").disabled = live.on;
+  };
+
+  const showLiveSummary = (extra) => {
+    summary.innerHTML = `${live.on ? '<span class="live-dot"></span> <b>Ao vivo</b>' : '<i class="bi bi-pause-circle"></i> <b>Tempo real pausado</b>'}` +
+      ` · ${live.rows.length} evento(s) na tela${live.lastOk ? ` · atualizado às ${clock(new Date(live.lastOk))}` : ""}${extra || ""}` +
+      ` <span class="text-body-tertiary" title="Filtro enviado ao FortiAnalyzer">· <code>${FLP.esc(live.filter || "(sem filtro)")}</code></span>`;
+  };
+
+  async function poll(first) {
+    const gen = live.gen;  // pesquisa recomeçada no meio de uma atualização: a resposta antiga é descartada
+    if (!live.on || live.busyGen === gen) return;
+    if (Date.now() - live.startedAt > MAX_RUN) {
+      stopLive("Tempo real pausado depois de 1 hora ligado. Clique em Continuar para seguir acompanhando.");
+      return;
+    }
+    live.busyGen = gen;
+    const now = new Date();
+    const from = live.lastOk ? Math.max(live.lastOk - OVERLAP, now - MAX_GAP) : now - FIRST_WINDOW;
+    try {
+      const body = { ...live.query, start: localTime(new Date(from)), end: localTime(now) };
+      const r = await FLP.api(`/api/faz/logs/live${first ? "?first=true" : ""}`, { method: "POST", body });
+      if (!live.on || gen !== live.gen) return;
+      live.filter = r.filter; live.errors = 0; live.lastOk = now.getTime();
+      const fresh = r.rows.filter((row) => !live.keys.has(rowKey(row)));
+      fresh.forEach((row) => { live.keys.add(rowKey(row)); if (live.rows.length) row._novo = true; });
+      if (fresh.length) {
+        live.rows = fresh.concat(live.rows).sort((a, b) => String(b.data_hora).localeCompare(String(a.data_hora)));
+        if (live.rows.length > maxRows()) live.rows.length = maxRows();  // mantém só os mais recentes
+        if (live.keys.size > maxRows() * 20) live.keys = new Set(live.rows.map(rowKey));
+      }
+      if (live.table) live.table.update(live.rows);
+      else live.table = FLP.renderLogTable(results, live.rows, { onFilter, empty: "Tempo real ligado. Aguardando eventos..." });
+      fresh.forEach((row) => delete row._novo);  // o destaque aparece só na atualização em que o evento chegou
+      showLiveSummary(fresh.length && !first ? ` · <span class="text-danger fw-semibold">+${fresh.length} novo(s)</span>` : "");
+    } catch (e) {
+      if (!live.on || gen !== live.gen) return;
+      live.errors += 1;
+      if (live.errors >= MAX_ERRORS) stopLive(`Tempo real pausado: o FortiAnalyzer não respondeu (${e.message}).`);
+      else showLiveSummary(` · <span class="text-warning">falha na atualização, tentando de novo (${FLP.esc(e.message)})</span>`);
+    } finally { if (live.busyGen === gen) live.busyGen = null; }
+  }
+
+  function startLive(reset) {
+    clearInterval(live.timer);
+    const query = baseQuery();
+    if (reset || JSON.stringify(query) !== JSON.stringify(live.query)) {
+      Object.assign(live, { rows: [], keys: new Set(), table: null, lastOk: 0 });
+      results.innerHTML = "";
+    }
+    Object.assign(live, { on: true, query, startedAt: Date.now(), errors: 0, gen: live.gen + 1 });
+    document.getElementById("exports").innerHTML = "";  // exportação fica disponível ao pausar
+    setLiveButton();
+    showLiveSummary(" · buscando...");
+    poll(true);
+    live.timer = setInterval(() => { if (!document.hidden) poll(false); }, +liveEvery.value * 1000);
+  }
+
+  async function stopLive(message) {
+    clearInterval(live.timer);
+    live.on = false; live.gen += 1;
+    setLiveButton();
+    showLiveSummary();
+    if (message) FLP.toast(message, "warning");
+    if (!live.rows.length) return;
+    try {
+      const r = await FLP.api("/api/faz/logs/store", { method: "POST",
+        body: { logtype: live.query.logtype, filter: live.filter, rows: live.rows } });
+      FLP.exportButtons(document.getElementById("exports"), r.result_id);
+    } catch { /* sem exportação, a lista continua na tela */ }
+  }
+
+  liveBtn.addEventListener("click", () => (live.on ? stopLive() : startLive(false)));
+  liveEvery.addEventListener("change", () => { if (live.on) startLive(false); });
+  // ao voltar para a aba, atualiza na hora em vez de esperar o próximo ciclo
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && live.on) poll(false); });
+  // mudou firewall, tipo de log ou "somente bloqueios" com o tempo real ligado: recomeça com o novo filtro
+  let restart = null;
+  form.addEventListener("change", (e) => {
+    if (!live.on || e.target.id === "period" || e.target.id === "lastNValue") return;
+    clearTimeout(restart); restart = setTimeout(() => startLive(true), 600);
+  });
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (live.on) { startLive(true); return; }  // Pesquisar (ou filtro pelo botão direito) com tempo real ligado
+    Object.assign(live, { rows: [], keys: new Set(), table: null, lastOk: 0, query: null });
+    setLiveButton();
+    period.refresh();
+    FLP.busy(btn, true);
+    try {
+      const body = { ...FLP.formData(form), filters: filters.get() };
+      const r = await FLP.api("/api/faz/logs", { method: "POST", body });
+      document.getElementById("summary").innerHTML = `${r.returned} de ${r.total} evento(s) carregado(s)${r.cache ? " · do cache" : ""}` +
+        ` <span class="text-body-tertiary" title="Filtro enviado ao FortiAnalyzer">· <code>${FLP.esc(r.filter || "(sem filtro)")}</code></span>`;
+      FLP.renderLogTable(document.getElementById("results"), r.rows, { onFilter });
+      FLP.exportButtons(document.getElementById("exports"), r.result_id);
+    } catch (e) { FLP.toast(e.message, "danger"); }
+    finally { FLP.busy(btn, false); }
+  });
+});
+</script>
+{% endblock %}

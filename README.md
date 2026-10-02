@@ -6,6 +6,10 @@ ao FortiAnalyzer, sem precisar de acesso administrativo à GUI do FAZ.
 
 ![Tela do protótipo](docs/tela-prototipo.png)
 
+> **Novo:** o portal unificado **FortiLogPortal** (FortiAnalyzer + Trend Vision One, execução local
+> no Windows, dashboard, reputação, correlação e exportação CSV/XLSX/PDF) está em
+> [`FortiLogPortal/`](FortiLogPortal/README.md).
+
 ## Arquitetura
 
 ```
