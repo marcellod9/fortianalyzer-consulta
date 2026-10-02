@@ -43,16 +43,17 @@ def test_faz_logsearch_flow_add_get_delete():
         if body["method"] == "add":
             assert p["url"] == "/logview/adom/root/logsearch" and p["apiver"] == 3
             assert p["filter"] == "srcip=10.0.0.1" and p["device"] == [{"devid": "FG1"}]
+            assert p["limit"] == 10 and p["offset"] == 0  # sem limit no add, o FAZ para em 100 eventos
             return FakeResp(body={"result": {"tid": 42}})
         if body["method"] == "get":
-            return FakeResp(body={"result": {"percentage": 100, "total-lines": 1, "return-lines": 1,
+            return FakeResp(body={"result": {"percentage": 100, "total-count": 1, "return-lines": 1,
                                              "data": [{"srcip": "10.0.0.1"}]}})
         return FakeResp(body={"result": {"status": {"code": 0}}})
     s = FakeSession(handler)
     c = FazClient("https://faz.local", "tok", session=s)
     res = c.search_logs("root", "traffic", "2026-10-01 00:00:00", "2026-10-01 01:00:00", "srcip=10.0.0.1", ["FG1"], 10)
-    assert res == {"total": 1, "returned": 1, "logs": [{"srcip": "10.0.0.1"}]}
-    assert [cl[2]["method"] for cl in s.calls] == ["add", "get", "get", "delete"]  # 2º get: próxima página
+    assert res == {"total": 1, "returned": 1, "logs": [{"srcip": "10.0.0.1"}], "mais": False}
+    assert [cl[2]["method"] for cl in s.calls] == ["add", "get", "delete"]
     assert s.headers["Authorization"] == "Bearer tok"
 
 
@@ -144,47 +145,59 @@ def test_faz_retries_invalid_tid(monkeypatch):
     assert gets["n"] == 3
 
 
-def test_faz_reads_more_pages_when_faz_returns_fewer_rows(monkeypatch):
-    """O FAZ entrega no máximo 100 linhas por leitura: o cliente pagina com offset."""
-    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
-    all_rows = [{"id": i} for i in range(250)]
-    offsets = []
+class FakeFaz:
+    """Logsearch como o FAZ real: cada tarefa entrega uma página (limit/offset do add, padrão 100, máximo 1000)."""
 
-    def handler(method, url, body, kw):
+    def __init__(self, rows, total_key="total-count"):
+        self.rows, self.total_key, self.tasks, self.adds, self.n = rows, total_key, {}, [], 0
+
+    def __call__(self, method, url, body, kw):
         p = body["params"][0]
         if body["method"] == "add":
-            return FakeResp(body={"result": {"tid": 9}})
+            if p.get("limit", 100) > 1000:
+                return FakeResp(body={"result": {"status": {"code": -32002, "message": "Invalid params: limit: 5000 is bigger than max value 1000."}}})
+            self.n += 1
+            self.tasks[self.n] = (p.get("offset", 0), p.get("limit", 100))
+            self.adds.append(self.tasks[self.n])
+            return FakeResp(body={"result": {"tid": self.n}})
         if body["method"] == "get":
-            off = p["offset"]
-            offsets.append(off)
-            data = all_rows[off: off + min(p["limit"], 100)]
-            return FakeResp(body={"result": {"percentage": 100, "total-lines": 100, "data": data}})
+            tid = int(p["url"].rsplit("/", 1)[1])
+            if tid not in self.tasks:
+                return FakeResp(body={"error": {"code": -32005, "message": f"Server error: Invalid tid {tid} for fetching result."}})
+            off, lim = self.tasks.pop(tid)  # tarefa de uso único
+            page = self.rows[off: off + lim]
+            # o total informado é só o que a busca achou até parar (piso)
+            return FakeResp(body={"result": {"percentage": 100, self.total_key: off + len(page), "data": page}})
         return FakeResp(body={"result": {}})
-    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
-    res = c.search_logs("root", "traffic", "a", "b", limit=500)
-    assert res["returned"] == 250 and res["total"] == 250
-    assert res["logs"] == all_rows
-    assert offsets == [0, 100, 200, 250]
 
 
-def test_faz_never_asks_more_than_1000_rows_per_read(monkeypatch):
-    """O FAZ recusa limit > 1000 ("Invalid params: limit: 5000 is bigger than max value 1000")."""
+def test_faz_pages_with_a_new_search_per_page(monkeypatch):
     monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
-    all_rows = [{"id": i} for i in range(2500)]
-    limits = []
-
-    def handler(method, url, body, kw):
-        p = body["params"][0]
-        if body["method"] == "add":
-            return FakeResp(body={"result": {"tid": 9}})
-        if body["method"] == "get":
-            limits.append(p["limit"])
-            if p["limit"] > 1000:
-                return FakeResp(body={"result": {"status": {"code": -32002, "message": f"Invalid params: limit: {p['limit']} is bigger than max value 1000."}}})
-            return FakeResp(body={"result": {"percentage": 100, "total-lines": 2500,
-                                             "data": all_rows[p["offset"]: p["offset"] + p["limit"]]}})
-        return FakeResp(body={"result": {}})
-    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    fake = FakeFaz([{"id": i} for i in range(2500)])
+    c = FazClient("https://faz.local", "tok", session=FakeSession(fake))
     res = c.search_logs("root", "webfilter", "a", "b", limit=5000)
-    assert res["returned"] == 2500 and res["logs"] == all_rows
-    assert max(limits) == 1000
+    assert res["returned"] == 2500 and res["logs"] == fake.rows and res["mais"] is False
+    assert fake.adds == [(0, 1000), (1000, 1000), (2000, 1000)]
+
+
+def test_faz_flags_more_events_when_the_limit_is_reached(monkeypatch):
+    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
+    fake = FakeFaz([{"id": i} for i in range(3000)])
+    c = FazClient("https://faz.local", "tok", session=FakeSession(fake))
+    res = c.search_logs("root", "webfilter", "a", "b", limit=1500)
+    assert res["returned"] == 1500 and res["mais"] is True and fake.adds == [(0, 1000), (1000, 500)]
+
+
+def test_faz_stops_when_offset_is_ignored(monkeypatch):
+    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
+    rows = [{"id": i} for i in range(1000)]
+
+    def handler(method, url, body, kw):
+        if body["method"] == "add":
+            return FakeResp(body={"result": {"tid": 1}})
+        if body["method"] == "get":
+            return FakeResp(body={"result": {"percentage": 100, "data": rows}})
+        return FakeResp(body={"result": {}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    assert c.search_logs("root", "webfilter", "a", "b", limit=5000)["returned"] == 1000
+

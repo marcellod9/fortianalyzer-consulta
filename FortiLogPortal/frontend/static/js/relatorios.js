@@ -200,7 +200,9 @@ FLP.reports = (() => {
     last = rep;
     const box = document.getElementById("report"), r = rep.resumo;
     const fontes = Object.values(rep.fontes).map((f) => f.erro ? `${esc(f.nome)}: não consultado`
-      : `${esc(f.nome)}: ${num(f.total)} eventos${f.total > f.lidos ? ` (${num(f.lidos)} analisados)` : ""}`).join(" · ");
+      : f.total_minimo ? `${esc(f.nome)}: mais de ${num(f.lidos)} eventos (${num(f.lidos)} analisados)`
+      : `${esc(f.nome)}: ${num(f.total)} eventos${f.mais ? ` (${num(f.lidos)} analisados)` : ""}`).join(" · ");
+    const minimo = Object.values(rep.fontes).some((f) => f.total_minimo);
     const kinds = { geral: true, usuario: false, ip: true, site: true, aplicacao: true };
     box.innerHTML = `
       <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
@@ -211,7 +213,7 @@ FLP.reports = (() => {
       ${rep.aviso_amostra ? `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-info-circle"></i> ${esc(rep.aviso_amostra)}</div>` : ""}
       ${rep.aviso ? `<div class="alert alert-warning small py-2 mb-2">${esc(rep.aviso)}</div>` : ""}
       <div class="row g-2 mb-3">
-        ${kpi("Eventos", num(r.eventos), "bi-list-ul", "", rep.amostra ? `${num(r.lidos)} analisados` : "")}
+        ${kpi("Eventos", `${minimo ? "≥ " : ""}${num(r.eventos)}`, "bi-list-ul", "", rep.amostra ? `${num(r.lidos)} analisados` : "")}
         ${kpi("Bloqueados", num(r.bloqueados), "bi-x-octagon", "text-danger", rep.amostra ? `nos ${num(r.lidos)} analisados` : "")}
         ${kinds[rep.tipo] ? kpi("Usuários", num(r.usuarios), "bi-people") : kpi("IPs de origem", num(r.ips), "bi-pc-display")}
         ${rep.tipo !== "aplicacao" ? kpi("Sites", num(r.sites), "bi-globe2") : ""}

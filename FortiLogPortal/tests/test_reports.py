@@ -42,12 +42,15 @@ def test_general_report_counts_and_charts():
     assert t["agrupamento"] == "hora" and len(t["rotulos"]) == 25 and sum(t["permitidos"]) + sum(t["bloqueados"]) == s["lidos"]
 
 
-def test_report_by_site_uses_webfilter_only_and_drops_its_own_dimension():
+def test_report_by_site_checks_every_layer_that_can_block_it():
     r = reports.run_report(q(tipo="site", valor="facebook.com"), use_cache=False)
-    assert list(r["fontes"]) == ["webfilter"]
+    assert list(r["fontes"]) == ["webfilter", "app-ctrl", "dns"]
+    assert r["fontes"]["dns"]["filtro"] == 'qname~"facebook.com"'
     ids = [c["id"] for c in r["graficos"]]
-    assert "sites" not in ids and "usuarios" in ids
-    assert all(e["site"].endswith("facebook.com") for e in r["eventos"])
+    assert "sites" not in ids and "usuarios" in ids and "camadas" in ids
+    camadas = next(c for c in r["graficos"] if c["id"] == "camadas")
+    assert sum(n for _, n in camadas["itens"]) == r["resumo"]["bloqueados"]
+    assert "bloqueado_por" in [c for c, _ in r["detalhe"]["colunas"]]
 
 
 def test_sample_warning_when_period_has_more_events(monkeypatch):
@@ -142,7 +145,7 @@ def test_extra_searches_complete_the_user_list_when_the_period_has_more_events(m
         rows = match[: lq.limit]
         return {"total": len(match), "returned": len(rows), "rows": rows}
     monkeypatch.setattr(reports, "run_query", fake_run_query)
-    r = reports.run_report(q(tipo="site", valor="facebook.com"), use_cache=False)
+    r = reports.run_report(q(tipo="aplicacao", valor="Facebook"), use_cache=False)
     d = r["detalhe"]
     assert [x["usuario"] for x in d["linhas"]] == ["ana", "bia", "caio"] and d["completo"]
     assert d["linhas"][0]["acessos"] == 10 and not d["linhas"][0]["parcial"]
@@ -162,7 +165,7 @@ def test_user_list_is_flagged_incomplete_when_remaining_events_have_no_login(mon
         match = [e for e in events if e["usuario"] not in excluded]
         return {"total": len(match), "returned": min(len(match), lq.limit), "rows": match[: lq.limit]}
     monkeypatch.setattr(reports, "run_query", fake_run_query)
-    r = reports.run_report(q(tipo="site", valor="facebook.com"), use_cache=False)
+    r = reports.run_report(q(tipo="aplicacao", valor="Facebook"), use_cache=False)
     assert not r["detalhe"]["completo"] and "pode não estar completa" in r["aviso_amostra"]
 
 
@@ -174,5 +177,5 @@ def test_detail_in_pdf_and_excel():
     assert wb.sheetnames[1] == "Usuários"
     ws = wb["Usuários"]
     assert ws.cell(3, 1).value == "Usuário" and ws.max_row == 3 + len(r["detalhe"]["linhas"])
-    assert report_export.detail_rows(r["detalhe"])[0][6].count("/") == 2
+    assert report_export.detail_rows(r["detalhe"])[0][7].count("/") == 2  # primeiro acesso dd/mm/aaaa
     assert report_export.build("pdf", r, reports.EVENT_COLUMNS)[0].startswith(b"%PDF")

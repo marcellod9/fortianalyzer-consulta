@@ -254,7 +254,7 @@ def to_pdf(rep: dict) -> bytes:
         dcell = ParagraphStyle("dcell", parent=cell, fontSize=6.5, leading=8)
         dhead = ParagraphStyle("dhead", parent=dcell, textColor=colors.white, fontName="Helvetica-Bold")
         weights = {"usuario": 2.2, "destino": 2.4, "ips": 1.8, "maquinas": 1.6, "categoria": 1.5, "firewalls": 1.5,
-                   "primeiro": 1.3, "ultimo": 1.3, "tipo": 0.9, "acessos": 1.05, "permitidos": 1.15, "bloqueados": 1.15}
+                   "primeiro": 1.3, "ultimo": 1.3, "tipo": 0.9, "bloqueado_por": 1.6, "acessos": 1.05, "permitidos": 1.15, "bloqueados": 1.15}
         w = [weights.get(k, 0.9) for k, _ in det["colunas"]]
         widths = [doc.width * x / sum(w) for x in w]
         data = [[Paragraph(escape(label), dhead) for _, label in det["colunas"]]]

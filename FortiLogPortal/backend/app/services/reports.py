@@ -22,7 +22,8 @@ from .faz_filters import LogFilter, LogQuery
 from .fortianalyzer import FazError
 from .logsearch import run_query
 
-LOGTYPE_NAMES = {"webfilter": "filtro web", "app-ctrl": "controle de aplicações"}
+LOGTYPE_NAMES = {"webfilter": "filtro web", "app-ctrl": "controle de aplicações", "dns": "filtro DNS"}
+LAYER_NAMES = {"webfilter": "Filtro web", "app-ctrl": "Controle de aplicações", "dns": "Filtro DNS"}
 
 KINDS = {
     # tipo: (nome, tipos de log, gráficos)
@@ -32,13 +33,15 @@ KINDS = {
                 ("acao", "categorias", "sites", "sites_bloqueados", "aplicacoes", "categorias_app", "ips", "maquinas", "tempo")),
     "ip": ("IP de origem", ("webfilter", "app-ctrl"),
            ("acao", "categorias", "sites", "sites_bloqueados", "aplicacoes", "usuarios", "maquinas", "tempo")),
-    "site": ("Site", ("webfilter",), ("acao", "usuarios", "ips", "maquinas", "firewalls", "tempo")),
+    # site: o acesso pode ser registrado (e bloqueado) pelo filtro web, pelo controle de aplicações ou pelo filtro DNS
+    "site": ("Site", ("webfilter", "app-ctrl", "dns"), ("acao", "camadas", "usuarios", "ips", "maquinas", "firewalls", "tempo")),
     "aplicacao": ("Aplicação", ("app-ctrl",), ("acao", "usuarios", "ips", "maquinas", "firewalls", "tempo")),
 }
 
 # id: (título, gráfico, tipo de log usado (None = todos), coluna, só bloqueados, rótulo da coluna)
 CHARTS = {
     "acao": ("Permitidos x bloqueados", "pie", None, None, False, "Situação"),
+    "camadas": ("Bloqueios por camada do firewall", "pie", None, "camada", True, "Camada"),
     "categorias": ("Categorias de sites", "pie", "webfilter", "categoria", False, "Categoria"),
     "sites": ("Sites mais acessados", "bar", "webfilter", "site", False, "Site"),
     "sites_bloqueados": ("Sites mais bloqueados", "bar", "webfilter", "site", True, "Site"),
@@ -62,6 +65,11 @@ DETAIL_MAX = 3000          # linhas da tabela detalhada
 DISCOVERY_ROUNDS = 3       # buscas extras para completar a lista de usuários
 DISCOVERY_EXCLUDE = 150    # usuários já vistos excluídos por busca extra (o filtro do FAZ fica longo)
 DISCOVERY_LIMIT = 1000
+
+
+def _more(res: dict) -> bool:
+    """O período tem mais eventos do que os lidos (página cheia ou total maior)."""
+    return bool(res.get("mais", res["total"] > res["returned"]))
 
 
 def _row_limit(q: "ReportQuery") -> int:
@@ -204,19 +212,22 @@ def build_detail(q: ReportQuery, rows: list[dict], extra: list[dict], complete: 
             elif key in seen_main:
                 continue  # já contado nos eventos principais
             g = groups.setdefault(key, {"acessos": 0, "bloqueados": 0, "ips": set(), "maquinas": set(), "firewalls": set(),
-                                        "categorias": set(), "usuarios": set(), "primeiro": r["data_hora"],
+                                        "categorias": set(), "usuarios": set(), "camadas": set(), "primeiro": r["data_hora"],
                                         "ultimo": r["data_hora"], "parcial": src == "extra"})
             g["acessos"] += 1
             g["bloqueados"] += 1 if r["bloqueado"] else 0
             g["ips"].add(r["ip_origem"]); g["maquinas"].add(r["maquina"]); g["firewalls"].add(r["firewall"])
             g["categorias"].add(r["categoria"]); g["usuarios"].add(r["usuario"])
+            if r["bloqueado"]:
+                g["camadas"].add(r.get("camada") or LAYER_NAMES.get(r["tipo_log"], r["tipo_log"]))
             g["primeiro"] = min(g["primeiro"], r["data_hora"]); g["ultimo"] = max(g["ultimo"], r["data_hora"])
     lines = []
     # quem tem login primeiro; os eventos sem usuário (rede sem login, ex.: Wi-Fi de visitantes) vêm por IP, no fim
     no_login = lambda key: isinstance(key, str) and key.startswith("(sem login)")  # noqa: E731
     for key, g in sorted(groups.items(), key=lambda kv: (no_login(kv[0]), -kv[1]["acessos"], str(kv[0]))):
         line = {"acessos": g["acessos"], "permitidos": g["acessos"] - g["bloqueados"], "bloqueados": g["bloqueados"],
-                "primeiro": g["primeiro"], "ultimo": g["ultimo"], "firewalls": _join(g["firewalls"]), "parcial": g["parcial"]}
+                "primeiro": g["primeiro"], "ultimo": g["ultimo"], "firewalls": _join(g["firewalls"]), "parcial": g["parcial"],
+                "bloqueado_por": _join(g["camadas"])}
         if by_dest:
             line.update(tipo=key[0], destino=key[1], categoria=_join(g["categorias"], 2), ips=_join(g["ips"]))
         else:
@@ -229,12 +240,14 @@ def build_detail(q: ReportQuery, rows: list[dict], extra: list[dict], complete: 
         titulo = f"O que {q.valor} acessou"
     else:
         cols = [("usuario", "Usuário"), ("ips", "IP de origem"), ("maquinas", "Máquina"), ("acessos", "Acessos"),
-                ("permitidos", "Permitidos"), ("bloqueados", "Bloqueados"), ("primeiro", "Primeiro acesso"),
-                ("ultimo", "Último acesso"), ("firewalls", "Firewall")]
+                ("permitidos", "Permitidos"), ("bloqueados", "Bloqueados"), ("bloqueado_por", "Bloqueado por"),
+                ("primeiro", "Primeiro acesso"), ("ultimo", "Último acesso"), ("firewalls", "Firewall")]
         titulo = {"site": f"Usuários que acessaram {q.valor}", "aplicacao": f"Usuários que usaram {q.valor}",
                   "ip": f"Usuários no IP {q.valor}"}.get(q.tipo, "Usuários")
     if q.somente_bloqueios:
         cols = [c for c in cols if c[0] not in ("permitidos", "bloqueados")]
+    if len(KINDS[q.tipo][1]) == 1 or by_dest:
+        cols = [c for c in cols if c[0] != "bloqueado_por"]  # uma camada só: a coluna não diz nada
         titulo = titulo.replace("acessaram", "tiveram bloqueio em").replace("usaram", "tiveram bloqueio em")
     sem_login = sum(1 for k in groups if no_login(k))
     return {"titulo": titulo, "colunas": cols, "linhas": lines[:DETAIL_MAX], "total": len(lines),
@@ -268,7 +281,7 @@ def _discover_users(q: ReportQuery, lt: str, rows: list[dict]) -> tuple[list[dic
             return extra, False
         extra.extend(res["rows"])
         new = {r["usuario"] for r in res["rows"] if r["usuario"]} - known
-        if res["total"] <= res["returned"]:
+        if not _more(res):
             return extra, True  # leu tudo o que sobrou
         if not new:
             return extra, False  # o que sobra são eventos sem usuário (rede sem login)
@@ -306,8 +319,13 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         except FazError as e:
             fontes[lt]["erro"] = erros[lt] = str(e)
             continue
-        fontes[lt].update(total=max(res["total"], res["returned"]), lidos=res["returned"])
-        if fontes[lt]["total"] > res["returned"] and res["rows"]:
+        for r in res["rows"]:
+            r["camada"] = LAYER_NAMES[lt]
+        more = _more(res)
+        # com a página cheia o FAZ pode informar só o que achou até ali: o total vira um mínimo
+        fontes[lt].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=more,
+                          total_minimo=more and res["total"] <= res["returned"])
+        if more and res["rows"]:
             oldest.append(min(r["data_hora"] for r in res["rows"]))
             if q.tipo != "usuario":  # quem acessou: completa a lista de usuários com buscas extras
                 more, done = _discover_users(q, lt, res["rows"])
@@ -320,7 +338,7 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         raise FazError("Não foi possível consultar o FortiAnalyzer: " + "; ".join(f"{LOGTYPE_NAMES[k]}: {v}" for k, v in erros.items()))
     rows.sort(key=lambda r: r["data_hora"], reverse=True)
 
-    amostra = any(f["total"] > f["lidos"] for f in fontes.values())
+    amostra = any(f.get("mais") for f in fontes.values())
     bloqueados = sum(1 for r in rows if r["bloqueado"])
     out = {
         "titulo": q.title(), "tipo": q.tipo, "tipo_nome": KINDS[q.tipo][0], "valor": q.valor,
@@ -343,8 +361,9 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         "cache": False,
     }
     if amostra:
-        lidos = " e ".join(f"{f['lidos']:,} de {f['total']:,} no {f['nome']}".replace(",", ".")
-                           for f in fontes.values() if f["total"] > f["lidos"])
+        lidos = " e ".join((f"{f['lidos']:,} no {f['nome']}" if f.get("total_minimo") else
+                            f"{f['lidos']:,} de {f['total']:,} no {f['nome']}").replace(",", ".")
+                           for f in fontes.values() if f.get("mais"))
         mais_antigo = max(oldest) if oldest else ""
         out["aviso_amostra"] = (f"O período tem mais eventos do que o relatório lê: os gráficos e as contagens usam os "
                                 f"mais recentes ({lidos}), desde {mais_antigo}.")

@@ -17,8 +17,8 @@ no Fortinet Developer Network (FNDN):
 | `get /sys/status` | teste de conexão (hostname e versão) |
 | `get /dvmdb/adom` | lista ADOMs |
 | `get /dvmdb/adom/{adom}/device` | lista firewalls (nome, número de série, IP) |
-| `add /logview/adom/{adom}/logsearch` (apiver 3) | cria a busca e devolve `tid` |
-| `get /logview/adom/{adom}/logsearch/{tid}` | lê o resultado até `percentage = 100` |
+| `add /logview/adom/{adom}/logsearch` (apiver 3, com `limit` e `offset`) | cria a busca de uma página e devolve `tid`. Sem `limit`, o FAZ para em 100 eventos; o máximo é 1000. Cada `tid` entrega uma página: a próxima é uma busca nova com `offset` maior |
+| `get /logview/adom/{adom}/logsearch/{tid}` | lê a página até `percentage = 100`; o total vem em `total-count` e é um mínimo quando a página vem cheia |
 | `delete /logview/adom/{adom}/logsearch/{tid}` | libera a tarefa no FAZ |
 
 A aba **Relatórios** usa a mesma busca (filtro web e controle de aplicações), então não precisa de

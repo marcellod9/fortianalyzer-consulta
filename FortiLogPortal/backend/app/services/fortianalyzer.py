@@ -8,8 +8,8 @@ URLs usadas:
   get    /sys/status                               versão e hostname (teste de conexão)
   get    /dvmdb/adom                               ADOMs
   get    /dvmdb/adom/{adom}/device                 firewalls da ADOM
-  add    /logview/adom/{adom}/logsearch            cria tarefa de busca (apiver 3) -> tid
-  get    /logview/adom/{adom}/logsearch/{tid}      lê resultado até percentage = 100
+  add    /logview/adom/{adom}/logsearch            cria tarefa de busca (apiver 3, limit/offset da página) -> tid
+  get    /logview/adom/{adom}/logsearch/{tid}      lê a página até percentage = 100 (uma página por tarefa)
   delete /logview/adom/{adom}/logsearch/{tid}      libera a tarefa no FAZ
 """
 import itertools
@@ -113,62 +113,64 @@ class FazClient:
         return sorted(out, key=lambda x: (x["name"] or "").lower())
 
     # ---- busca de logs ----------------------------------------------------
+    # Cada tarefa (tid) entrega uma página só: o "add" já leva limit e offset (o FAZ para de procurar quando acha
+    # "limit" eventos; sem limit, ele usa o padrão de 100) e o "get" lê essa página. A próxima página é uma busca
+    # nova com offset maior. O total vem em "total-count" e é um piso: com a página cheia, pode haver mais.
     def search_logs(self, adom: str, logtype: str, start: str, end: str, filter_expr: str = "",
                     devices: list[str] | None = None, limit: int = 500) -> dict:
+        rows: list = []
+        total = 0
+        prev_first = None
+        with timed(self.source, f"logsearch {logtype} [{filter_expr}]"):
+            while len(rows) < limit:
+                size = min(PAGE_MAX, limit - len(rows))
+                data, page_total = self._search_page(adom, logtype, start, end, filter_expr, devices, len(rows), size)
+                total = max(total, page_total or 0)
+                if not data or (rows and data[:1] == prev_first):
+                    break  # acabou (ou o FAZ ignorou o offset e repetiu a página)
+                prev_first = data[:1]
+                rows.extend(data[: limit - len(rows)])
+                if len(data) < size and (not page_total or len(rows) >= page_total):
+                    break  # página incompleta e o total não indica mais eventos
+        more = len(rows) >= limit and total <= len(rows)  # página cheia: pode haver mais do que o total informado
+        return {"total": max(total, len(rows)), "returned": len(rows), "logs": rows, "mais": more or total > len(rows)}
+
+    def _search_page(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
+                     devices: list[str] | None, offset: int, limit: int) -> tuple[list, int | None]:
         base = f"/logview/adom/{adom}/logsearch"
         device = [{"devid": d} for d in devices] if devices else [{"devid": "All_FortiGate"}]
-        with timed(self.source, f"logsearch {logtype} [{filter_expr}]"):
-            created = self.call(
-                "add", base, apiver=3, device=device, logtype=logtype, filter=filter_expr,
-                **{"time-order": "desc", "case-sensitive": False, "time-range": {"start": start, "end": end}},
-            ) or {}
-            tid = created.get("tid")
-            if tid is None:
-                raise FazError(f"FortiAnalyzer não devolveu tid: {created}")
-            try:
-                deadline = time.monotonic() + settings.faz_search_timeout
-                invalid_tid = 0
-                time.sleep(0.5)  # o FAZ pode demorar a registrar a tarefa recém-criada
-                while True:
-                    try:
-                        res = self.call("get", f"{base}/{tid}", apiver=3, offset=0, limit=min(limit, PAGE_MAX)) or {}
-                    except FazError as e:
-                        # "Invalid tid ... for fetching result" (-32005): tarefa ainda não disponível
-                        if "Invalid tid" in str(e) and invalid_tid < 5 and time.monotonic() < deadline:
-                            invalid_tid += 1
-                            time.sleep(1)
-                            continue
-                        raise
-                    if res.get("percentage", 0) >= 100:
-                        rows = self._fetch_pages(f"{base}/{tid}", res.get("data") or [], limit)
-                        total = max(res.get("total-lines") or 0, len(rows))
-                        return {"total": total, "returned": len(rows), "logs": rows}
-                    if time.monotonic() > deadline:
-                        raise FazError("Tempo limite da busca excedido; reduza o período ou refine o filtro.")
-                    time.sleep(1)
-            finally:
+        created = self.call(
+            "add", base, apiver=3, device=device, logtype=logtype, filter=filter_expr, limit=limit, offset=offset,
+            **{"time-order": "desc", "case-sensitive": False, "time-range": {"start": start, "end": end}},
+        ) or {}
+        tid = created.get("tid")
+        if tid is None:
+            raise FazError(f"FortiAnalyzer não devolveu tid: {created}")
+        try:
+            deadline = time.monotonic() + settings.faz_search_timeout
+            invalid_tid = 0
+            time.sleep(0.5)  # o FAZ pode demorar a registrar a tarefa recém-criada
+            while True:
                 try:
-                    self.call("delete", f"{base}/{tid}", apiver=3)
-                except Exception:
-                    pass
-
-
-    def _fetch_pages(self, url: str, rows: list, limit: int) -> list:
-        """Busca as páginas seguintes da tarefa até atingir o limite.
-
-        O FAZ pode devolver menos linhas por leitura do que o pedido (ex.: 100), então
-        lê de novo com offset até vir uma página vazia ou repetida.
-        """
-        rows = list(rows[:limit])
-        prev = rows[:1]
-        while rows and len(rows) < limit:
-            page = self.call("get", url, apiver=3, offset=len(rows), limit=min(limit - len(rows), PAGE_MAX)) or {}
-            data = page.get("data") or []
-            if not data or data[:1] == prev:  # acabou, ou o FAZ ignorou o offset
-                break
-            prev = data[:1]
-            rows.extend(data[: limit - len(rows)])
-        return rows
+                    res = self.call("get", f"{base}/{tid}", apiver=3, offset=offset, limit=limit) or {}
+                except FazError as e:
+                    # "Invalid tid ... for fetching result" (-32005): tarefa ainda não disponível
+                    if "Invalid tid" in str(e) and invalid_tid < 5 and time.monotonic() < deadline:
+                        invalid_tid += 1
+                        time.sleep(1)
+                        continue
+                    raise
+                if res.get("percentage", 0) >= 100:
+                    total = res.get("total-count", res.get("total-lines"))
+                    return res.get("data") or [], (total if isinstance(total, int) and not isinstance(total, bool) else None)
+                if time.monotonic() > deadline:
+                    raise FazError("Tempo limite da busca excedido; reduza o período ou refine o filtro.")
+                time.sleep(1)
+        finally:
+            try:
+                self.call("delete", f"{base}/{tid}", apiver=3)
+            except Exception:
+                pass
 
 
 _client: FazClient | None = None

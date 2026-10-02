@@ -33,6 +33,7 @@ def run_query(q: LogQuery, use_cache: bool = True, save_cache: bool = True, poli
         fill_policy_names(rows, q)
     out = {
         "total": res["total"], "returned": len(rows), "filter": q.filter_expr(), "logtype": q.logtype,
+        "mais": bool(res.get("mais")) or res["total"] > len(rows),  # o período tem mais eventos do que os lidos
         "bloqueados": sum(1 for r in rows if r["bloqueado"]), "rows": rows, "cache": False,
     }
     if save_cache:
