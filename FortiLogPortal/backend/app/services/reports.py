@@ -294,7 +294,7 @@ def _firewall_names(q: ReportQuery) -> str:
         return q.devname
     if not q.devices:
         return "Todos"
-    devs = database.cache_get(f"faz:devices:{q.adom}") or []
+    devs = database.cache_get(f"faz:devices2:{q.adom}") or []
     names = {d.get("sn"): d.get("name") for d in devs if isinstance(d, dict)}
     return ", ".join(names.get(sn) or sn for sn in q.devices)
 

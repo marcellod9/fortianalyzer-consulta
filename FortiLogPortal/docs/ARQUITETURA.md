@@ -74,6 +74,7 @@ Credenciais **não** ficam no banco.
 | POST | `/api/correlation` | `{indicator, start, end, adom}` |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
 | POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos |
+| POST | `/api/threats/live?first=` | `{start, end, adom, devices}` da janela mais recente (a tela repete a cada 15/30/60 s): eventos de ameaça com `id` estável, país (`pais`/`mapa`), direção (`entrada`) e firewall. Só a primeira consulta (`first=true`) entra no histórico |
 | POST | `/api/reports` | `{tipo: geral\|usuario\|ip\|site\|aplicacao, valor, start, end, adom, devices, somente_bloqueios, top}`: relatório com os dados dos gráficos e `report_id` |
 | GET | `/api/reports/{report_id}.pdf\|xlsx` | baixa o relatório (1 h) |
 | GET | `/api/history?type=&q=` | histórico |

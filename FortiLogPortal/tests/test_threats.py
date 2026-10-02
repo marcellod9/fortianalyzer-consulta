@@ -126,3 +126,33 @@ def test_world_map_names_cover_the_aliases():
     from app.config import BASE_DIR
     names = {p["n"] for p in json.loads((BASE_DIR / "frontend/static/vendor/worldmap/world-110m.json").read_text())["paises"]}
     assert set(threats.MAP_NAMES.values()) <= names
+
+
+def test_device_coordinates_from_dvmdb():
+    data = [{"name": "fw-a", "sn": "A", "latitude": "-15.79", "longitude": "-47.88"},
+            {"name": "fw-b", "sn": "B", "latitude": "0.000000", "longitude": "0.000000"},
+            {"name": "fw-c", "sn": "C", "latitude": "abc", "longitude": "999"}]
+    c = FazClient("https://faz.local", "tok", session=FakeSession(
+        lambda *a: FakeResp(200, {"result": [{"data": data, "status": {"code": 0}}]})))
+    devs = {d["name"]: d for d in c.list_devices("root")}
+    assert (devs["fw-a"]["lat"], devs["fw-a"]["lon"]) == (-15.79, -47.88)
+    assert devs["fw-b"]["lat"] is None and devs["fw-c"]["lat"] is None and devs["fw-c"]["lon"] is None
+
+
+def test_api_threats_live_demo():
+    with TestClient(app) as c:
+        body = {"start": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%S"), "end": NOW.strftime("%Y-%m-%dT%H:%M:%S")}
+        r = c.post("/api/threats/live?first=true", json=body)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        ev = d["eventos"]
+        assert ev and len(ev) <= threats.LIVE_MAX and not d["erros"]
+        assert len({e["id"] for e in ev}) == len(ev)
+        assert {"entrada", "pais", "mapa", "firewall", "bloqueado", "severidade"} <= set(ev[0])
+        assert any(e["entrada"] for e in ev) and any(e["pais"] for e in ev)
+        # mesma janela de novo: mesmos ids (a tela usa o id para não repetir o arco)
+        again = c.post("/api/threats/live", json=body).json()["eventos"]
+        assert {e["id"] for e in again} == {e["id"] for e in ev}
+        before = len(c.get("/api/history?type=ameacas-tempo-real").json())
+        c.post("/api/threats/live", json=body)  # as repetições não entram no histórico
+        assert len(c.get("/api/history?type=ameacas-tempo-real").json()) == before >= 1

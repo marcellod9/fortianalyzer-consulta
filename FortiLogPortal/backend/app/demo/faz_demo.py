@@ -8,9 +8,12 @@ import re
 from datetime import datetime, timedelta
 
 DEVICES = [
-    {"name": "FW-BRASILIA", "sn": "FG200FDEMO000001", "ip": "10.10.0.1", "platform": "FortiGate-200F", "desc": "Demo"},
-    {"name": "FW-CURITIBA", "sn": "FG100FDEMO000002", "ip": "10.20.0.1", "platform": "FortiGate-100F", "desc": "Demo"},
+    {"name": "FW-BRASILIA", "sn": "FG200FDEMO000001", "ip": "10.10.0.1", "platform": "FortiGate-200F", "desc": "Demo",
+     "lat": -15.79, "lon": -47.88},
+    {"name": "FW-CURITIBA", "sn": "FG100FDEMO000002", "ip": "10.20.0.1", "platform": "FortiGate-100F", "desc": "Demo",
+     "lat": -25.43, "lon": -49.27},
     {"name": "FW-SAOPAULO", "sn": "FG600FDEMO000003", "ip": "10.30.0.1", "platform": "FortiGate-600F", "desc": "Demo",
+     "lat": -23.55, "lon": -46.63,
      "ha_members": [{"name": "FW-SAOPAULO-A", "sn": "FG600FDEMO000003", "role": "master"},
                     {"name": "FW-SAOPAULO-B", "sn": "FG600FDEMO000004", "role": "slave"}]},
 ]

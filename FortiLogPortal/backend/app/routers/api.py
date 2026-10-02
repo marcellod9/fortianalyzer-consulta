@@ -88,7 +88,7 @@ def _permission_error(e: FazError) -> bool:
 def devices(adom: str):
     if not SAFE_NAME.match(adom):
         raise HTTPException(400, "ADOM inválido")
-    key = f"faz:devices:{adom}"
+    key = f"faz:devices2:{adom}"  # devices2: a lista passou a trazer lat/lon (o cache antigo não tinha)
     hit = database.cache_get(key)
     if hit is not None:
         return hit
@@ -344,6 +344,21 @@ def threat_overview(q: threats.ThreatQuery, request: Request, cache: bool = True
     rid = store_result("ameacas", "Eventos de ameaça", threats.EVENT_COLUMNS, out["eventos"],
                        {"Período": f"{out['periodo']['inicio']} a {out['periodo']['fim']}"})
     return {**{k: v for k, v in out.items() if k != "eventos"}, "result_id": rid, "eventos_exportaveis": len(out["eventos"])}
+
+
+@router.post("/threats/live")
+def threat_live(q: threats.ThreatQuery, request: Request, first: bool = False):
+    """Mapa em tempo real: a tela repete a consulta da janela mais recente. Só a primeira entra no histórico."""
+    if first:
+        with tracked(request, "ameacas-tempo-real", "Mapa de ameaças em tempo real", q.model_dump(mode="json")) as info:
+            out = threats.live(q)
+            info.update(count=len(out["eventos"]), blocked=sum(e["bloqueado"] for e in out["eventos"]),
+                        summary=f"Mapa em tempo real iniciado: {len(out['eventos'])} eventos na primeira janela")
+        return out
+    try:
+        return threats.live(q)
+    except FazError as e:
+        raise HTTPException(502, str(e))
 
 
 # ---- relatórios ------------------------------------------------------------------------------

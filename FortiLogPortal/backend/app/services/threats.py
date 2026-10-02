@@ -106,6 +106,7 @@ def threat_row(row: dict, source: str) -> dict:
         "referencia": str(log.get("ref") or "")[:300],
         # lado externo: de onde veio o ataque (IPS de entrada) ou para onde a máquina foi (site, botnet, download)
         "pais": _country(log.get("srccountry") if inbound else log.get("dstcountry")),
+        "entrada": inbound,
     }
 
 
@@ -361,22 +362,7 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
     if use_cache and (hit := database.cache_get(key)):
         hit["cache"] = True
         return hit
-    rows: list[dict] = []
-    fontes: dict[str, dict[str, Any]] = {}
-    for sid, (nome, lt, cat, _sev) in SOURCES.items():
-        lq = q.log_query(lt, cat)
-        lq.limit = ROWS_PER_SOURCE
-        expr = lq.filter_expr()
-        if sid == "botnet":
-            expr = " and ".join(p for p in (expr, 'appcat~"Botnet"') if p)
-        fontes[sid] = {"nome": nome, "filtro": expr, "total": 0, "lidos": 0}
-        try:
-            res = _search(lq, expr) if sid == "botnet" else run_query(lq, use_cache=False, save_cache=False, policy_names=False)
-        except FazError as e:
-            fontes[sid]["erro"] = str(e)
-            continue
-        fontes[sid].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=res["mais"])
-        rows.extend(threat_row(r, sid) for r in res["rows"])
+    rows, fontes = _read_sources(q, ROWS_PER_SOURCE)
     erros = {k: f["erro"] for k, f in fontes.items() if f.get("erro")}
     try:
         comprometidas = compromised_hosts(q)
@@ -418,6 +404,49 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
     if not erros and not comprometidas.get("erro") and not top.get("erro"):
         database.cache_set(key, out, ttl=CACHE_TTL)
     return out
+
+
+def _read_sources(q: ThreatQuery, limit: int) -> tuple[list[dict], dict[str, dict[str, Any]]]:
+    """Eventos de ameaça de cada fonte (IPS, antivírus, filtro web, botnet, DNS), os mais recentes primeiro."""
+    rows: list[dict] = []
+    fontes: dict[str, dict[str, Any]] = {}
+    for sid, (nome, lt, cat, _sev) in SOURCES.items():
+        lq = q.log_query(lt, cat)
+        lq.limit = limit
+        expr = lq.filter_expr()
+        if sid == "botnet":
+            expr = " and ".join(p for p in (expr, 'appcat~"Botnet"') if p)
+        fontes[sid] = {"nome": nome, "filtro": expr, "total": 0, "lidos": 0}
+        try:
+            res = _search(lq, expr) if sid == "botnet" else run_query(lq, use_cache=False, save_cache=False, policy_names=False)
+        except FazError as e:
+            fontes[sid]["erro"] = str(e)
+            continue
+        fontes[sid].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=res["mais"])
+        rows.extend(threat_row(r, sid) for r in res["rows"])
+    rows.sort(key=lambda r: r["data_hora"], reverse=True)
+    return rows, fontes
+
+
+# ---- mapa em tempo real ----------------------------------------------------------------------------
+LIVE_ROWS = 150      # eventos lidos por fonte a cada atualização
+LIVE_MAX = 300       # eventos devolvidos por atualização
+
+
+def live(q: ThreatQuery) -> dict:
+    """Eventos de ameaça da janela mais recente, para o mapa animado (a tela repete a consulta)."""
+    rows, fontes = _read_sources(q, LIVE_ROWS)
+    erros = {k: f["erro"] for k, f in fontes.items() if f.get("erro")}
+    if len(erros) == len(SOURCES):
+        raise FazError("Não foi possível consultar o FortiAnalyzer: " + next(iter(erros.values())))
+    eventos = []
+    for r in rows[:LIVE_MAX]:
+        key = "|".join(str(r[k]) for k in ("data_hora", "fonte", "ameaca", "ip_origem", "ip_destino", "firewall"))
+        eventos.append({k: r[k] for k in ("data_hora", "tipo", "fonte", "ameaca", "severidade", "bloqueado", "usuario",
+                                          "ip_origem", "ip_destino", "maquina", "pais", "entrada", "firewall", "destino")}
+                       | {"mapa": MAP_NAMES.get(r["pais"], r["pais"]), "id": hashlib.sha1(key.encode()).hexdigest()[:16]})
+    return {"eventos": eventos, "erros": erros, "lidos": len(rows),
+            "janela": {"inicio": q.faz_time("start"), "fim": q.faz_time("end")}}
 
 
 def _search(lq: LogQuery, expr: str) -> dict:

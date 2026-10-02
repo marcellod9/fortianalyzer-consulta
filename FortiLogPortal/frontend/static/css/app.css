@@ -128,3 +128,48 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 .tmap-none { background: var(--bs-secondary-bg); }
 .tmap-tip { position: absolute; pointer-events: none; z-index: 5; max-width: 220px; padding: .35rem .5rem; font-size: .8rem;
   background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: .375rem; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+
+/* Ameaças > Mapa em tempo real (fundo escuro nos dois temas, como o Threat Map do FortiAnalyzer) */
+.live-map { position: relative; background: #0b1a2b; border-radius: .5rem; overflow: hidden; min-height: 18rem; color: #dbe7f5; }
+.live-map svg { display: block; width: 100%; height: auto; }
+.live-land path { fill: #1f3d5c; stroke: #2c5378; stroke-width: .5; transition: fill 1s; }
+.live-land path.hit { fill: #2b5680; }
+.live-fw { fill: #0b1a2b; stroke: #7cf0c8; stroke-width: 2; }
+.live-fw-halo { fill: none; stroke: #7cf0c8; stroke-opacity: .35; stroke-width: 1.2; animation: live-halo 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.live-arc path { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation-name: live-draw; animation-timing-function: ease-out; animation-fill-mode: forwards; filter: drop-shadow(0 0 2px currentColor); }
+.live-arc { transition: opacity .8s; }
+.live-arc.out { opacity: 0; }
+.live-pulse { fill: none; stroke-width: 1.5; animation: live-pulse 1.4s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+.live-map.paused .live-arc path, .live-map.paused .live-pulse { animation-play-state: paused; }
+@keyframes live-draw { to { stroke-dashoffset: 0; } }
+@keyframes live-pulse { from { transform: scale(1); opacity: 1; } to { transform: scale(5); opacity: 0; } }
+@keyframes live-halo { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+.live-feed { position: absolute; top: .5rem; left: .5rem; width: 19rem; max-height: calc(100% - 3rem); overflow: hidden; font-size: .75rem;
+  -webkit-mask-image: linear-gradient(#000 80%, transparent); mask-image: linear-gradient(#000 80%, transparent); }
+.live-item { background: rgba(11, 26, 43, .82); border-left: 3px solid #2c5378; padding: .25rem .45rem; margin-bottom: .25rem; border-radius: .25rem;
+  animation: live-in .4s ease-out; }
+.live-time { color: #8fb3d9; font-variant-numeric: tabular-nums; }
+.live-name { font-weight: 600; }
+.live-sev { font-weight: 600; white-space: nowrap; }
+.live-path { color: #c9d8ea; }
+.live-arrow, .live-meta { color: #8fb3d9; }
+.live-country { color: #f2c14e; }
+.live-pass { color: #ff8a8a; }
+@keyframes live-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.live-stats { position: absolute; top: .5rem; right: .5rem; text-align: right; font-size: .8rem; background: rgba(11, 26, 43, .7);
+  padding: .3rem .5rem; border-radius: .25rem; }
+.live-stats:empty { display: none; }
+.live-top { color: #8fb3d9; max-width: 14rem; }
+.live-top span { display: inline-block; margin-left: .5rem; }
+.live-legend { position: absolute; bottom: .4rem; right: .6rem; font-size: .75rem; color: #c9d8ea; }
+.live-legend span { margin-left: .7rem; white-space: nowrap; }
+.live-legend i { display: inline-block; width: .7rem; height: .25rem; margin-right: .3rem; vertical-align: middle; border-radius: 2px; }
+.live-ring { display: inline-block; width: .65rem; height: .65rem; border: 2px solid #7cf0c8; border-radius: 50%; margin-right: .3rem; vertical-align: -1px; }
+.live-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(11, 26, 43, .85); padding: .5rem .8rem;
+  border-radius: .375rem; font-size: .85rem; text-align: center; max-width: 22rem; }
+@media (max-width: 767.98px) {
+  .live-feed { position: static; width: auto; max-height: none; padding: .5rem; -webkit-mask-image: none; mask-image: none; }
+  .live-stats { position: static; text-align: left; margin: 0 .5rem .5rem; }
+  .live-legend { position: static; padding: 0 .5rem .5rem; }
+}

@@ -2,6 +2,14 @@
 {% block title %}Ameaças{% endblock %}
 {% block heading %}<i class="bi bi-bug"></i> Ameaças{% endblock %}
 {% block content %}
+<ul class="nav nav-tabs mb-3 no-print" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#paneOverview" type="button" role="tab">
+    <i class="bi bi-clipboard-data"></i> Visão geral</button></li>
+  <li class="nav-item"><button class="nav-link" id="tabLive" data-bs-toggle="tab" data-bs-target="#paneLive" type="button" role="tab">
+    <i class="bi bi-broadcast"></i> Mapa em tempo real</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="paneOverview" role="tabpanel">
 <form id="form" class="card card-body mb-3 no-print" autocomplete="off">
   <div class="small text-body-secondary mb-2">Máquinas com alerta de comprometimento (IOC e botnet do Event Monitor do FortiAnalyzer)
     e as ameaças vistas nos logs: IPS, antivírus, sites maliciosos e phishing, botnet e domínios maliciosos no DNS.</div>
@@ -31,12 +39,43 @@
   </div></div>
 </form>
 <div id="result"></div>
+</div>
+<div class="tab-pane fade" id="paneLive" role="tabpanel">
+  <form id="liveForm" class="d-flex flex-wrap gap-2 align-items-end mb-2" autocomplete="off">
+    <div style="min-width:16rem"><label class="form-label small mb-1">Firewall</label><div id="liveDevices"></div></div>
+    <div><label class="form-label small mb-1">Atualizar a cada</label>
+      <select class="form-select form-select-sm" id="liveEvery"><option value="15">15 s</option><option value="30" selected>30 s</option>
+        <option value="60">1 min</option></select></div>
+    <div><label class="form-label small mb-1">Velocidade</label>
+      <select class="form-select form-select-sm" id="liveSpeed"><option value="1">1x</option><option value="2" selected>2x</option>
+        <option value="4">4x</option></select></div>
+    <div class="form-check mb-1"><input class="form-check-input" type="checkbox" id="liveOnlyPass">
+      <label class="form-check-label small" for="liveOnlyPass">Só não bloqueadas</label></div>
+    <button type="button" class="btn btn-sm btn-primary" id="livePlay"><i class="bi bi-pause-fill"></i> Pausar</button>
+    <span class="small text-body-secondary ms-auto" id="liveStatus"></span>
+  </form>
+  <div class="live-map" id="liveMap">
+    <div class="live-feed" id="liveFeed" aria-live="polite"></div>
+    <div class="live-stats" id="liveStats"></div>
+    <div class="live-legend"><span><i style="background:#e66767"></i>Crítica</span><span><i style="background:#ff8a4c"></i>Alta</span>
+      <span><i style="background:#f2c14e"></i>Média</span><span><i style="background:#7cc4ff"></i>Baixa / outras</span>
+      <span><b class="live-ring"></b>Firewall</span></div>
+  </div>
+  <div class="small text-body-secondary mt-2">Eventos de ameaça dos últimos minutos (IPS, antivírus, sites maliciosos e phishing, botnet e DNS), lidos de novo a cada
+    atualização. O arco liga o firewall ao país do outro lado; a posição do firewall vem da localização cadastrada no FortiGate
+    (sem ela, o firewall aparece no Brasil). O FortiAnalyzer pode levar alguns minutos para receber os logs.</div>
+</div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
 <script src="/static/js/relatorios.js?v={{ asset_v }}"></script>
 <script src="/static/js/ameacas.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas_live.js?v={{ asset_v }}"></script>
 <script>
-document.addEventListener("DOMContentLoaded", () => FLP.threats.init("{{ default_adom }}", {{ 'true' if can_reports else 'false' }}));
+document.addEventListener("DOMContentLoaded", () => {
+  FLP.threats.init("{{ default_adom }}", {{ 'true' if can_reports else 'false' }});
+  FLP.threatsLive.init();
+});
 </script>
 {% endblock %}

@@ -34,6 +34,14 @@ class FazError(Exception):
 PAGE_MAX = 1000
 
 
+def _coord(v, limit: int) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if -limit <= f <= limit and f != 0 else None
+
+
 class FazClient:
     source = "fortianalyzer"
 
@@ -112,7 +120,9 @@ class FazClient:
                        for m in (d.get("ha_slave") or []) if isinstance(m, dict)]
             out.append({"name": d.get("name"), "sn": d.get("sn"), "ip": d.get("ip"),
                         "platform": d.get("platform_str"), "desc": d.get("desc"),
-                        "ha_members": members if len(members) > 1 else []})
+                        "ha_members": members if len(members) > 1 else [],
+                        # latitude/longitude do dispositivo no Device Manager (no FortiGate: gui-device-latitude/longitude), usadas no mapa em tempo real
+                        "lat": _coord(d.get("latitude"), 90), "lon": _coord(d.get("longitude"), 180)})
         return sorted(out, key=lambda x: (x["name"] or "").lower())
 
     # ---- busca de logs ----------------------------------------------------
