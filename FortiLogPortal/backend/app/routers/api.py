@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats
+from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -359,6 +359,20 @@ def threat_live(q: threats.LiveQuery, request: Request, first: bool = False):
         return threats.live(q, q.fontes)
     except FazError as e:
         raise HTTPException(502, str(e))
+
+
+@router.post("/threats/trend-inactive")
+def threat_trend_inactive(q: trend_coverage.CoverageQuery, request: Request, refresh: bool = False):
+    """Máquinas vistas no firewall da unidade com o agente Trend desligado, sem comunicação ou sem Trend."""
+    with tracked(request, "trend-inativo", f"Trend inativo {q.devname or ', '.join(q.devices) or 'todos os firewalls'}",
+                 q.model_dump(mode="json")) as info:
+        out = trend_coverage.run(q, refresh=refresh)
+        r = out["resumo"]
+        info.update(count=r["computadores"], summary=f"{r['inativos']} com Trend inativo, {r['sem_trend']} sem Trend, "
+                                                     f"{r['ativos']} ativos de {r['computadores']} máquinas")
+    rid = store_result("trend-inativo", "Máquinas com Trend inativo", trend_coverage.COLUMNS, out["linhas"],
+                       {"Período": f"{out['periodo']['inicio']} a {out['periodo']['fim']}", "Origem": out["origem"]})
+    return {**out, "result_id": rid}
 
 
 # ---- relatórios ------------------------------------------------------------------------------

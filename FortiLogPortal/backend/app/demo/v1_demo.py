@@ -133,8 +133,18 @@ class DemoVisionOneClient:
         return ALERTS
 
     def endpoints(self, max_items=500):
-        return [{"agentGuid": "demo-1", "endpointName": {"value": "NB-SUPORTE-12"}, "osName": "Windows",
-                 "productCode": "sao", "policyName": "Padrão"}]
+        """Inventário (formato de endpointSecurity/endpoints): na demonstração, só as máquinas já geradas."""
+        return [self._list_item(ep) for ep in list(_ENDPOINTS.values())[:max_items]]
+
+    def inventory_for(self, ips):
+        """Demonstração: a rede simulada é grande demais para listar inteira; monta só as máquinas pedidas."""
+        for ip in ips:
+            _from_ip(ip)
+        return self.endpoints(max_items=len(_ENDPOINTS))
+
+    def _list_item(self, ep):
+        d = self.endpoint_details(ep["agentGuid"])
+        return {**d, "osName": ep["osName"], "ipAddresses": [d["lastUsedIp"]]}
 
     def search_endpoints(self, query, max_items=20):
         out = []

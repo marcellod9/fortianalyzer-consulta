@@ -56,6 +56,14 @@ dos campos `latitude`/`longitude` do dispositivo em `get /dvmdb/adom/{adom}/devi
 `config system global` > `gui-device-latitude`/`gui-device-longitude`); sem eles, o firewall aparece no centro do Brasil.
 O FortiAnalyzer pode levar alguns minutos para receber e indexar os logs, então o mapa mostra o que já chegou nele.
 
+A sub-aba **Trend inativo** junta duas fontes. Do FortiAnalyzer vêm as máquinas internas que passaram pelo firewall
+no período (FortiView `top-sources`; se a versão não tiver essa visão, os 5000 logs de tráfego mais recentes), com
+`srcname`, `srcmac`, `user`, `osname` e `srcintf` da identificação de dispositivos do FortiGate. Do Vision One vem o
+inventário `GET /v3.0/endpointSecurity/endpoints` (campos `endpointName`, `lastUsedIp`, `ipAddresses`,
+`eppAgent.status`, `eppAgent.lastConnectedDateTime`, `edrSensor.connectivity`, os mesmos do SDK oficial pytmv1),
+lido até `V1_INVENTORY_MAX` endpoints e guardado 30 minutos. O cruzamento é pelo nome da máquina e, sem nome, pelo IP.
+A chave de API precisa visualizar o Endpoint Inventory.
+
 ### Criar o acesso (no FortiAnalyzer)
 
 1. **System Settings > Admin > Profiles**: crie um perfil **somente leitura** com *Log View*

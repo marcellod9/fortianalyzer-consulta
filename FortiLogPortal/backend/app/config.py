@@ -50,6 +50,7 @@ class Settings:
     faz_max_results: int = field(default_factory=lambda: _int("FAZ_MAX_RESULTS", 1000))
     faz_search_timeout: int = field(default_factory=lambda: _int("FAZ_SEARCH_TIMEOUT", 120))
     faz_parallel_searches: int = field(default_factory=lambda: _int("FAZ_PARALLEL_SEARCHES", 1))
+    v1_inventory_max: int = field(default_factory=lambda: _int("V1_INVENTORY_MAX", 20000))
     # Relatórios: eventos lidos por tipo de log para montar os gráficos (os mais recentes do período)
     report_max_rows: int = field(default_factory=lambda: max(100, min(_int("REPORT_MAX_ROWS", 5000), 50000)))
     # relatório filtrado (usuário, IP, site, aplicação): lê mais, para a lista de usuários/destinos sair completa

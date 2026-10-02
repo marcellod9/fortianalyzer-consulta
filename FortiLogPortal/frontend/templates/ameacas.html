@@ -7,6 +7,8 @@
     <i class="bi bi-clipboard-data"></i> Visão geral</button></li>
   <li class="nav-item"><button class="nav-link" id="tabLive" data-bs-toggle="tab" data-bs-target="#paneLive" type="button" role="tab">
     <i class="bi bi-broadcast"></i> Mapa em tempo real</button></li>
+  <li class="nav-item"><button class="nav-link" id="tabTrend" data-bs-toggle="tab" data-bs-target="#paneTrend" type="button" role="tab">
+    <i class="bi bi-shield-slash"></i> Trend inativo</button></li>
 </ul>
 <div class="tab-content">
 <div class="tab-pane fade show active" id="paneOverview" role="tabpanel">
@@ -65,6 +67,29 @@
     atualização. O arco liga o firewall ao país do outro lado; a posição do firewall vem da localização cadastrada no FortiGate
     (sem ela, o firewall aparece no Brasil). O FortiAnalyzer pode levar alguns minutos para receber os logs.</div>
 </div>
+<div class="tab-pane fade" id="paneTrend" role="tabpanel">
+<form id="trendForm" class="card card-body mb-3 no-print" autocomplete="off">
+  <div class="small text-body-secondary mb-2">Máquinas que passaram pelo firewall da unidade e estão com o agente Trend desligado,
+    sem comunicação há 7 dias ou mais, ou fora do inventário do Vision One. Nome, usuário e MAC vêm da identificação de
+    dispositivos do FortiGate; a situação do agente vem do inventário de endpoints do Vision One.</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall (unidade)</label><div id="trendDevices"></div></div>
+    <div class="col-md-3 col-lg-2"><label class="form-label small">Vistas no firewall em</label>
+      <select class="form-select form-select-sm" id="trendPeriod">
+        <option value="60">Última 1 hora</option><option value="240">Últimas 4 horas</option>
+        <option value="1440" selected>Último 1 dia</option><option value="10080">Últimos 7 dias</option></select></div>
+    <div class="col-auto"><div class="form-check"><input class="form-check-input" type="checkbox" id="trendPcs" checked>
+      <label class="form-check-label small" for="trendPcs" title="Deixa de fora celulares, tablets, TVs e impressoras identificados pelo FortiGate">Só computadores</label></div>
+      <div class="form-check"><input class="form-check-input" type="checkbox" id="trendActive">
+      <label class="form-check-label small" for="trendActive">Mostrar também as ativas</label></div></div>
+    <div class="col-auto">
+      <button class="btn btn-primary btn-sm" id="trendBtn"><span class="spinner-border spinner-border-sm spinner-overlay"></span> <i class="bi bi-search"></i> Consultar</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="trendRefresh" title="Lê de novo o inventário do Vision One (fica 30 minutos em cache)"><i class="bi bi-arrow-repeat"></i> Inventário</button></div>
+    <div class="col-auto ms-auto" id="trendDownloads"></div>
+  </div>
+</form>
+<div id="trendResult"></div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -72,10 +97,12 @@
 <script src="/static/js/relatorios.js?v={{ asset_v }}"></script>
 <script src="/static/js/ameacas.js?v={{ asset_v }}"></script>
 <script src="/static/js/ameacas_live.js?v={{ asset_v }}"></script>
+<script src="/static/js/ameacas_trend.js?v={{ asset_v }}"></script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   FLP.threats.init("{{ default_adom }}", {{ 'true' if can_reports else 'false' }});
   FLP.threatsLive.init();
+  FLP.threatsTrend.init();
 });
 </script>
 {% endblock %}
