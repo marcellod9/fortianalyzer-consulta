@@ -91,7 +91,35 @@ def test_machine_missing_from_list_is_looked_up_one_by_one(monkeypatch):
     monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
     monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
     monkeypatch.setattr(tc.database, "cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(tc.settings, "v1_inventory_max", 0)  # lista cortada no limite
     out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW, incluir_ativos=True))
     assert out["resumo"]["ativos"] == 1 and out["resumo"]["sem_trend"] == 0
     assert out["linhas"][0]["achado_por"].startswith("nome") and out["linhas"][0]["grupo"] == "Workgroup"
     assert "ip eq '10.55.10.67'" in queries[0] and "endpointName eq 'NA055PE0B2VCA'" in queries[0]
+
+
+def test_unmanaged_record_counts_as_no_trend_and_loses_to_managed():
+    managed = {"endpointName": "NA055PE0B2VCA", "lastUsedIp": "10.55.10.67",
+               "eppAgent": {"status": "on", "lastConnectedDateTime": _ts(0)}}
+    unmanaged = {"endpointName": "NA055PE0B2VCA", "lastUsedIp": "10.55.10.67"}
+    by_name, by_ip = tc.index([managed, unmanaged])
+    assert by_name["na055pe0b2vca"] is managed and by_ip["10.55.10.67"] is managed
+    by_name, _ = tc.index([unmanaged, managed])
+    assert by_name["na055pe0b2vca"] is managed
+    assert not tc.has_agent(unmanaged) and tc.has_agent(managed)
+
+
+def test_unmanaged_match_is_reported_as_no_trend(monkeypatch):
+    machines = [{"ip": "10.17.10.100", "maquina": "ETN017AX0W4", "mac": "", "usuario": "", "sistema": "Windows", "tipo": "",
+                 "rede": "VLAN_10", "firewall": "fw", "visto": "2026-10-02 14:13:00", "sessoes": 1}]
+
+    class V1:
+        def endpoints(self, max_items):
+            return [{"endpointName": "ETN017AX0W4", "lastUsedIp": "10.17.10.100"}]
+    monkeypatch.setattr(tc, "machines_from_faz", lambda q: (machines, "teste", []))
+    monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
+    monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
+    monkeypatch.setattr(tc.database, "cache_set", lambda *a, **k: None)
+    out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW))
+    assert out["resumo"]["sem_trend"] == 1 and out["resumo"]["desconhecido"] == 0
+    assert out["linhas"][0]["situacao"] == tc.UNMANAGED

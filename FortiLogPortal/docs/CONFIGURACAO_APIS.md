@@ -64,7 +64,10 @@ inventário `GET /v3.0/endpointSecurity/endpoints` (campos `endpointName`, `last
 lido até `V1_INVENTORY_MAX` endpoints e guardado 30 minutos. O cruzamento é pelo nome da máquina e, sem nome, pelo IP.
 A máquina que não vier nessa lista é procurada uma a uma no Endpoint Inventory (`GET /v3.0/eiqs/endpoints` com
 TMV1-Query pelo nome e pelo IP, até 300 máquinas) e a situação do agente vem de `GET /v3.0/endpointSecurity/endpoints/{id}`,
-como na busca de máquina; só quem não é achado por nenhum dos dois aparece como **Sem Trend**.
+quando a lista foi cortada no limite; só quem não é achado aparece como **Sem Trend**. A lista também traz as máquinas
+só descobertas pelo Vision One (*Unmanaged endpoints* no console), sem `eppAgent` nem `edrSensor`: elas contam como
+Sem Trend (não gerenciada) e, com nome ou IP repetido, vale o registro com agente. Por isso `V1_INVENTORY_MAX`
+(padrão 60000) precisa ficar acima da soma de gerenciados e não gerenciados.
 A chave de API precisa visualizar o Endpoint Inventory.
 
 ### Criar o acesso (no FortiAnalyzer)

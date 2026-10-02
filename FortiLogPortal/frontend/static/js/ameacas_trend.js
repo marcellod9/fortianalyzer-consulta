@@ -24,6 +24,8 @@ FLP.threatsTrend = (() => {
   function badge(r) {
     const [t, c] = BADGE[r.estado] || [r.estado, "text-bg-light border"];
     const days = r.dias_sem_contato != null && r.estado === "sem_contato" ? ` · ${r.dias_sem_contato} dias` : "";
+    // conhecida pelo V1 só como máquina descoberta (Unmanaged endpoints): sem agente
+    if (r.estado === "sem_trend" && r.nome_trend) return `<span class="badge ${c}" title="${esc(r.situacao)}">${t}</span><div class="small text-body-secondary">não gerenciada no V1</div>`;
     return `<span class="badge ${c}" title="${esc(r.situacao)}">${t}${days}</span>`;
   }
 

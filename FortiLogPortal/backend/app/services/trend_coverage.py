@@ -145,6 +145,14 @@ def inventory(refresh: bool = False) -> list[dict]:
     return slim
 
 
+UNMANAGED = "Sem agente Trend (máquina descoberta, não gerenciada no Vision One)"
+
+
+def has_agent(ep: dict) -> bool:
+    """A lista de endpoints também traz as máquinas só descobertas (Unmanaged endpoints), sem eppAgent nem edrSensor."""
+    return bool(ep.get("eppAgent") or ep.get("edrSensor"))
+
+
 def _name(ep: dict) -> str:
     v = ep.get("endpointName")
     return str(v.get("value") if isinstance(v, dict) else v or "")
@@ -161,7 +169,8 @@ def index(eps: list[dict]) -> tuple[dict, dict]:
     for ep in eps:
         for d, k in ([(by_name, norm_host(_name(ep)))] if _name(ep) else []) + \
                     [(by_ip, ip) for ip in {ep.get("lastUsedIp"), *(ep.get("ipAddresses") or [])} if ip]:
-            if k not in d or _last_contact(ep) > _last_contact(d[k]):  # nome/IP repetido: a de contato mais recente
+            # nome/IP repetido: vale o registro com agente e, entre eles, o de contato mais recente
+            if k not in d or (has_agent(ep), _last_contact(ep)) > (has_agent(d[k]), _last_contact(d[k])):
                 d[k] = ep
     return by_name, by_ip
 
@@ -226,7 +235,9 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
         return None, ""
 
     # a lista pode não trazer todas as máquinas (limite, grupos da chave): as que faltaram são procuradas uma a uma
-    missing = [m for m in machines if not match(m)[0]]
+    # com a lista completa, quem não está nela não está no inventário: a busca individual só roda se ela foi cortada
+    truncated = len(eps) >= settings.v1_inventory_max
+    missing = [m for m in machines if not match(m)[0]] if truncated else []
     extra, falhas = lookup_missing(client, missing[:LOOKUP_MAX])
     if extra:
         n2, i2 = index(extra)
@@ -244,7 +255,10 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
         ep, por = match(m)
         if ep and ep.get("_busca"):
             por += " (busca no inventário)"
-        if ep:
+        if ep and not has_agent(ep):
+            # registro de máquina descoberta (Unmanaged endpoints no console): o V1 conhece, mas não há agente
+            ag, estado = None, "sem_trend"
+        elif ep:
             ag = _agent(ep)
             estado = ag["estado"]
         else:
@@ -254,7 +268,7 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
             continue
         epp = (ep or {}).get("eppAgent") or {}
         rows.append({
-            "estado": estado, "situacao": ag["texto"] if ag else STATE["sem_trend"][0],
+            "estado": estado, "situacao": ag["texto"] if ag else (UNMANAGED if ep else STATE["sem_trend"][0]),
             "maquina": m["maquina"] or (_name(ep) if ep else ""), "nome_trend": _name(ep) if ep else "",
             "ip": m["ip"], "mac": m["mac"], "usuario": m["usuario"], "usuario_trend": (ep or {}).get("lastLoggedOnUser") or "",
             "sistema": m["sistema"] or (ep or {}).get("osName") or "", "tipo": m["tipo"], "rede": m["rede"],
