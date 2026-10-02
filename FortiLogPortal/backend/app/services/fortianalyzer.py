@@ -220,6 +220,7 @@ class FazClient:
         try:
             deadline = time.monotonic() + settings.faz_search_timeout
             invalid_tid = 0
+            started = time.monotonic()
             time.sleep(0.5)  # o FAZ pode demorar a registrar a tarefa recém-criada
             while True:
                 try:
@@ -236,7 +237,8 @@ class FazClient:
                     return res.get("data") or [], (total if isinstance(total, int) and not isinstance(total, bool) else None)
                 if time.monotonic() > deadline:
                     raise FazError("Tempo limite da busca excedido; reduza o período ou refine o filtro.")
-                time.sleep(1)
+                # buscas curtas (ex.: mapa em tempo real) terminam em 1 a 2 s: confere a cada 0,5 s no começo
+                time.sleep(0.5 if time.monotonic() - started < 5 else 1)
         finally:
             try:
                 self.call("delete", f"{base}/{tid}", apiver=3)

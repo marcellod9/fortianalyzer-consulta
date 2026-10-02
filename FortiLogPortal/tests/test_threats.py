@@ -156,3 +156,11 @@ def test_api_threats_live_demo():
         before = len(c.get("/api/history?type=ameacas-tempo-real").json())
         c.post("/api/threats/live", json=body)  # as repetições não entram no histórico
         assert len(c.get("/api/history?type=ameacas-tempo-real").json()) == before >= 1
+
+
+def test_api_threats_live_one_source_at_a_time():
+    with TestClient(app) as c:
+        body = {"start": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%S"), "end": NOW.strftime("%Y-%m-%dT%H:%M:%S")}
+        d = c.post("/api/threats/live", json={**body, "fontes": ["ips"]}).json()
+        assert d["fontes"] == ["ips"] and d["eventos"] and {e["fonte"] for e in d["eventos"]} == {"ips"}
+        assert c.post("/api/threats/live", json={**body, "fontes": ["x"]}).status_code == 422

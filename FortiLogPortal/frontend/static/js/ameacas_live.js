@@ -10,7 +10,7 @@ FLP.threatsLive = (() => {
   const NS = "http://www.w3.org/2000/svg";
 
   let el = {}, world = null, centroid = {}, fw = {}, fwDefault = null, picker = null;
-  let active = false, paused = false, pollTimer = null, playTimer = null, first = true, busy = false;
+  let active = false, paused = false, pollTimer = null, playTimer = null, first = true, busy = false, generation = 0;
   let seen = new Set(), seenOrder = [], queue = [];
   let stats = { eventos: 0, bloqueados: 0, paises: {} };
 
@@ -66,37 +66,62 @@ FLP.threatsLive = (() => {
   const every = () => +el.every.value * 1000;
   const speed = () => +el.speed.value || 1;
 
-  function body() {
-    const end = new Date(), start = new Date(end.getTime() - (first ? FIRST_MIN : NEXT_MIN) * 60000);
-    const p = (n) => String(n).padStart(2, "0");
-    const local = (d) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  // uma fonte por vez: o FAZ recusa buscas simultâneas do mesmo admin, e assim cada resultado já aparece no mapa
+  const SOURCES = [["ips", "IPS"], ["botnet", "botnet"], ["virus", "antivírus"], ["malicioso", "sites maliciosos"],
+                   ["phishing", "phishing"], ["dns", "DNS"]];
+  const OVERLAP_MS = 60000;  // margem para logs que chegam atrasados ao FAZ
+  const p2 = (n) => String(n).padStart(2, "0");
+  const local = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  const parse = (s) => { const d = new Date(String(s || "").replace(" ", "T")); return isNaN(d) ? null : d; };
+  let newest = {}, queried = new Set();
+
+  function body(sid, end) {
+    // depois da primeira, a busca começa no evento mais novo já visto da fonte (janela curta = busca rápida no FAZ)
+    let from = end.getTime() - (queried.has(sid) ? NEXT_MIN : FIRST_MIN) * 60000;
+    if (newest[sid]) from = Math.min(end.getTime() - OVERLAP_MS, Math.max(from, newest[sid].getTime() - OVERLAP_MS));
     const devices = [...el.devices.querySelectorAll("input[name=devices]")].map((i) => i.value);
     const devname = (el.devices.querySelector("input[name=devname]") || {}).value || null;
-    return { adom: el.adom.value, devices, devname: devname || null, start: local(start), end: local(end) };
+    return { adom: el.adom.value, devices, devname: devname || null, fontes: [sid], start: local(new Date(from)), end: local(end) };
   }
 
   async function poll() {
     clearTimeout(pollTimer);
     if (!active || paused || busy) return;
     busy = true;
-    el.status.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Consultando o FortiAnalyzer...`;
+    const t0 = Date.now(), gen = generation, erros = {};
+    let novos = 0;
     try {
-      const d = await FLP.api(`/api/threats/live?first=${first}`, { method: "POST", body: body() });
-      first = false;
-      const fresh = d.eventos.filter((e) => !seen.has(e.id));
-      fresh.forEach(remember);
-      fresh.sort((a, b) => (a.data_hora < b.data_hora ? -1 : a.data_hora > b.data_hora ? 1 : 0));
-      queue.push(...fresh);
-      const errs = Object.keys(d.erros || {}).length;
-      el.status.textContent = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")} · ${fresh.length} evento(s) novo(s)` +
-        (errs ? ` · ${errs} fonte(s) com erro` : "");
-      if (errs) el.status.title = Object.entries(d.erros).map(([k, v]) => `${k}: ${v}`).join("\n");
-      if (!stats.eventos && !fresh.length) showEmpty(true);
-    } catch (e) {
-      el.status.textContent = `Erro: ${e.message}. Nova tentativa na próxima atualização.`;
+      for (let i = 0; i < SOURCES.length; i++) {
+        const [sid, label] = SOURCES[i];
+        if (!active || paused || gen !== generation) break;
+        el.status.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Consultando ${esc(label)} (${i + 1}/${SOURCES.length})...`;
+        try {
+          const d = await FLP.api(`/api/threats/live?first=${first}`, { method: "POST", body: body(sid, new Date()) });
+          first = false;
+          if (gen !== generation) break;
+          queried.add(sid);  // firewall ou ADOM mudou no meio da consulta
+          Object.assign(erros, d.erros || {});
+          const fresh = d.eventos.filter((e) => !seen.has(e.id));
+          fresh.forEach(remember);
+          d.eventos.forEach((e) => { const t = parse(e.data_hora); if (t && (!newest[sid] || t > newest[sid])) newest[sid] = t; });
+          fresh.sort((a, b) => (a.data_hora < b.data_hora ? -1 : a.data_hora > b.data_hora ? 1 : 0));
+          queue.push(...fresh);
+          novos += fresh.length;
+          if (fresh.length) tick();
+        } catch (e) {
+          erros[sid] = e.message;
+        }
+      }
+      const errs = Object.keys(erros).length;
+      el.status.textContent = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")} em ${((Date.now() - t0) / 1000).toFixed(1)} s · ` +
+        `${novos} evento(s) novo(s)` + (errs ? ` · ${errs} fonte(s) com erro` : "");
+      el.status.title = errs ? Object.entries(erros).map(([k, v]) => `${k}: ${v}`).join("\n") : "";
+      if (errs === SOURCES.length) el.status.textContent = `Erro: ${Object.values(erros)[0]}. Nova tentativa na próxima atualização.`;
+      if (!stats.eventos && !queue.length && !novos) showEmpty(true);
     } finally {
       busy = false;
-      if (active && !paused) pollTimer = setTimeout(poll, every());
+      // firewall ou ADOM mudou no meio: recomeça já; senão, ritmo fixo a partir do início da consulta
+      if (active && !paused) pollTimer = setTimeout(poll, gen !== generation ? 0 : Math.max(2000, every() - (Date.now() - t0)));
     }
   }
 
@@ -191,7 +216,7 @@ FLP.threatsLive = (() => {
 
   // ---- controles --------------------------------------------------------------------------------
   function reset() {
-    first = true; seen = new Set(); seenOrder = []; queue = [];
+    first = true; seen = new Set(); seenOrder = []; queue = []; newest = {}; queried = new Set(); generation += 1;
     stats = { eventos: 0, bloqueados: 0, paises: {} };
     el.feed.innerHTML = ""; el.stats.innerHTML = "";
     if (el.arcs) el.arcs.innerHTML = "";

@@ -406,11 +406,13 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
     return out
 
 
-def _read_sources(q: ThreatQuery, limit: int) -> tuple[list[dict], dict[str, dict[str, Any]]]:
+def _read_sources(q: ThreatQuery, limit: int, only: list[str] | None = None) -> tuple[list[dict], dict[str, dict[str, Any]]]:
     """Eventos de ameaça de cada fonte (IPS, antivírus, filtro web, botnet, DNS), os mais recentes primeiro."""
     rows: list[dict] = []
     fontes: dict[str, dict[str, Any]] = {}
     for sid, (nome, lt, cat, _sev) in SOURCES.items():
+        if only and sid not in only:
+            continue
         lq = q.log_query(lt, cat)
         lq.limit = limit
         expr = lq.filter_expr()
@@ -429,15 +431,28 @@ def _read_sources(q: ThreatQuery, limit: int) -> tuple[list[dict], dict[str, dic
 
 
 # ---- mapa em tempo real ----------------------------------------------------------------------------
-LIVE_ROWS = 150      # eventos lidos por fonte a cada atualização
+# A tela pede uma fonte por vez (o FAZ não aceita bem buscas simultâneas do mesmo admin REST) e mostra cada
+# resultado assim que chega; depois da primeira, cada busca começa no evento mais novo já visto daquela fonte.
+LIVE_ROWS = 100      # eventos lidos por fonte a cada atualização
 LIVE_MAX = 300       # eventos devolvidos por atualização
 
 
-def live(q: ThreatQuery) -> dict:
+class LiveQuery(ThreatQuery):
+    fontes: list[str] = []
+
+    @model_validator(mode="after")
+    def _check_sources(self):
+        bad = [f for f in self.fontes if f not in SOURCES]
+        if bad:
+            raise ValueError(f"fonte desconhecida: {', '.join(bad)}")
+        return self
+
+
+def live(q: ThreatQuery, fontes: list[str] | None = None) -> dict:
     """Eventos de ameaça da janela mais recente, para o mapa animado (a tela repete a consulta)."""
-    rows, fontes = _read_sources(q, LIVE_ROWS)
-    erros = {k: f["erro"] for k, f in fontes.items() if f.get("erro")}
-    if len(erros) == len(SOURCES):
+    rows, lidas = _read_sources(q, LIVE_ROWS, fontes or None)
+    erros = {k: f["erro"] for k, f in lidas.items() if f.get("erro")}
+    if erros and len(erros) == len(lidas):
         raise FazError("Não foi possível consultar o FortiAnalyzer: " + next(iter(erros.values())))
     eventos = []
     for r in rows[:LIVE_MAX]:
@@ -445,7 +460,7 @@ def live(q: ThreatQuery) -> dict:
         eventos.append({k: r[k] for k in ("data_hora", "tipo", "fonte", "ameaca", "severidade", "bloqueado", "usuario",
                                           "ip_origem", "ip_destino", "maquina", "pais", "entrada", "firewall", "destino")}
                        | {"mapa": MAP_NAMES.get(r["pais"], r["pais"]), "id": hashlib.sha1(key.encode()).hexdigest()[:16]})
-    return {"eventos": eventos, "erros": erros, "lidos": len(rows),
+    return {"eventos": eventos, "erros": erros, "lidos": len(rows), "fontes": list(lidas),
             "janela": {"inicio": q.faz_time("start"), "fim": q.faz_time("end")}}
 
 

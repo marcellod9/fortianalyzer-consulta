@@ -43,8 +43,10 @@ O **Mapa de ameaças** usa os campos `srccountry`/`dstcountry` dos próprios log
 a origem num ataque de entrada do IPS, o destino nos demais). O desenho do mapa é local
 (`frontend/static/vendor/worldmap`, Natural Earth via world-atlas, licença ISC), sem acesso à internet.
 
-O **Mapa em tempo real** repete a mesma busca de logs só para os últimos minutos (10 na primeira consulta, 5 nas
-seguintes, a cada 15, 30 ou 60 s) e anima apenas os eventos que ainda não apareceram. A posição de cada firewall vem
+O **Mapa em tempo real** repete a mesma busca de logs a cada 15, 30 ou 60 s, uma fonte por vez (IPS, botnet,
+antivírus, sites maliciosos, phishing, DNS), e cada resultado já entra no mapa assim que chega. A primeira consulta
+olha os últimos 10 minutos; as seguintes começam 1 minuto antes do evento mais novo já visto daquela fonte (no
+máximo 5 minutos), o que deixa cada busca no FAZ curta. Só os eventos que ainda não apareceram são animados. A posição de cada firewall vem
 dos campos `latitude`/`longitude` do dispositivo em `get /dvmdb/adom/{adom}/device` (no FortiGate,
 `config system global` > `gui-device-latitude`/`gui-device-longitude`); sem eles, o firewall aparece no centro do Brasil.
 O FortiAnalyzer pode levar alguns minutos para receber e indexar os logs, então o mapa mostra o que já chegou nele.

@@ -347,16 +347,16 @@ def threat_overview(q: threats.ThreatQuery, request: Request, cache: bool = True
 
 
 @router.post("/threats/live")
-def threat_live(q: threats.ThreatQuery, request: Request, first: bool = False):
+def threat_live(q: threats.LiveQuery, request: Request, first: bool = False):
     """Mapa em tempo real: a tela repete a consulta da janela mais recente. Só a primeira entra no histórico."""
     if first:
         with tracked(request, "ameacas-tempo-real", "Mapa de ameaças em tempo real", q.model_dump(mode="json")) as info:
-            out = threats.live(q)
+            out = threats.live(q, q.fontes)
             info.update(count=len(out["eventos"]), blocked=sum(e["bloqueado"] for e in out["eventos"]),
                         summary=f"Mapa em tempo real iniciado: {len(out['eventos'])} eventos na primeira janela")
         return out
     try:
-        return threats.live(q)
+        return threats.live(q, q.fontes)
     except FazError as e:
         raise HTTPException(502, str(e))
 
