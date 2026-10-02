@@ -40,6 +40,8 @@ FLP.threatsTrend = (() => {
       <td class="text-nowrap small">${esc(r.ultimo_contato || "-")}</td>
       <td class="text-nowrap small">${esc(String(r.visto || "").slice(0, 16) || "-")}</td>
       <td class="small text-break">${esc(r.grupo || "-")}${r.achado_por ? `<div class="text-body-secondary">pelo ${esc(r.achado_por)}</div>` : ""}</td>
+      <td><button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-check title="Procura a máquina no Vision One agora, pelo nome e pelo IP">
+        <i class="bi bi-search"></i> Conferir no V1</button></td>
     </tr>`;
   }
 
@@ -66,8 +68,8 @@ FLP.threatsTrend = (() => {
         </div>
         <div class="table-responsive" style="max-height:65vh"><table class="table table-sm table-hover align-middle small mb-0">
           <thead class="sticky-top"><tr><th>Trend</th><th>Máquina</th><th>IP / MAC</th><th>Usuário</th><th>Rede / firewall</th>
-            <th>Último contato do Trend</th><th>Visto no firewall</th><th>Grupo no Trend</th></tr></thead>
-          <tbody>${d.linhas.map(rowHtml).join("") || `<tr><td colspan="8" class="text-body-secondary">Nenhuma máquina com Trend inativo ou sem Trend nesse período. 🎉</td></tr>`}</tbody>
+            <th>Último contato do Trend</th><th>Visto no firewall</th><th>Grupo no Trend</th><th></th></tr></thead>
+          <tbody>${d.linhas.map(rowHtml).join("") || `<tr><td colspan="9" class="text-body-secondary">Nenhuma máquina com Trend inativo ou sem Trend nesse período. 🎉</td></tr>`}</tbody>
         </table></div>
         <div class="small text-body-secondary mt-2">Máquinas: ${esc(d.origem)} · inventário do Vision One: ${num(r.inventario)} endpoint(s)
           · período ${esc(d.periodo.inicio.slice(0, 16))} a ${esc(d.periodo.fim.slice(0, 16))}
@@ -84,6 +86,20 @@ FLP.threatsTrend = (() => {
       });
     };
     box.querySelector("#trendSearch").addEventListener("input", apply);
+    // conferência na hora: a mesma busca de máquina das outras telas (Endpoint Inventory + situação do agente)
+    box.querySelector("tbody").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-check]");
+      if (!btn) return;
+      const tr = btn.closest("tr"), r = d.linhas[rows.indexOf(tr)];
+      let next = tr.nextElementSibling;
+      if (!next || !next.classList.contains("trend-check")) {
+        next = document.createElement("tr");
+        next.className = "trend-check";
+        next.innerHTML = `<td colspan="9"><div></div></td>`;
+        tr.after(next);
+      }
+      FLP.machineLookup(next.querySelector("div"), { ip: r.ip, nome: r.maquina || "", usuario: r.usuario || "" }, btn);
+    });
     box.querySelectorAll("#trendFilter button").forEach((b) => b.addEventListener("click", () => {
       box.querySelectorAll("#trendFilter button").forEach((x) => x.classList.toggle("active", x === b));
       f = b.dataset.f; apply();

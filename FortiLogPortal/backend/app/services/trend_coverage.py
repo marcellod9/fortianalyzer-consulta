@@ -31,7 +31,7 @@ SOURCES_TOP = 3000        # linhas do FortiView Top Sources
 LOG_ROWS = 5000           # logs de tráfego lidos quando não há FortiView
 INVENTORY_TTL = 1800      # inventário do Vision One em cache (30 min)
 SHOW_MAX = 3000
-LOOKUP_MAX = 300          # máquinas fora da lista procuradas uma a uma no inventário (Endpoint Inventory)
+LOOKUP_MAX = 500          # máquinas fora da lista procuradas uma a uma no inventário (Endpoint Inventory)
 LOOKUP_BATCH = 10         # máquinas por consulta TMV1-Query
 # o que o FortiGate identifica como celular, TV, impressora etc.: não leva agente Trend
 NOT_COMPUTER = ("android", "ios", "iphone", "ipad", "phone", "tablet", "printer", "impressora", "camera", "tv",
@@ -132,7 +132,8 @@ def is_computer(m: dict) -> bool:
 
 # ---- inventário do Vision One ----------------------------------------------------------------
 def inventory(refresh: bool = False) -> list[dict]:
-    key = "v1:endpoint-inventory"
+    # o limite entra na chave: uma lista lida com limite menor (cortada) não é reaproveitada depois que ele sobe
+    key = f"v1:endpoint-inventory:{settings.v1_inventory_max}"
     if not refresh:
         hit = database.cache_get(key)
         if hit is not None:
@@ -235,16 +236,16 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
         return None, ""
 
     # a lista pode não trazer todas as máquinas (limite, grupos da chave): as que faltaram são procuradas uma a uma
-    # com a lista completa, quem não está nela não está no inventário: a busca individual só roda se ela foi cortada
-    truncated = len(eps) >= settings.v1_inventory_max
-    missing = [m for m in machines if not match(m)[0]] if truncated else []
+    # a lista pode não trazer todas as máquinas (limite, grupos da chave, atraso do inventário): antes de dizer
+    # "sem Trend", cada uma que faltou é procurada pelo nome e IP no Endpoint Inventory, como na busca de máquina
+    missing = [m for m in machines if not has_agent(match(m)[0] or {})]
     extra, falhas = lookup_missing(client, missing[:LOOKUP_MAX])
     if extra:
         n2, i2 = index(extra)
-        for k, v in n2.items():
-            by_name.setdefault(k, v)
-        for k, v in i2.items():
-            by_ip.setdefault(k, v)
+        for d, extra_d in ((by_name, n2), (by_ip, i2)):
+            for k, v in extra_d.items():
+                if k not in d or (has_agent(v) and not has_agent(d[k])):  # o achado com agente vence o descoberto
+                    d[k] = v
     if falhas:
         avisos.append("A busca individual no Endpoint Inventory falhou para parte das máquinas: " + falhas[0])
     if len(missing) > LOOKUP_MAX:

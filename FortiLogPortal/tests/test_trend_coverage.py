@@ -91,7 +91,6 @@ def test_machine_missing_from_list_is_looked_up_one_by_one(monkeypatch):
     monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
     monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
     monkeypatch.setattr(tc.database, "cache_set", lambda *a, **k: None)
-    monkeypatch.setattr(tc.settings, "v1_inventory_max", 0)  # lista cortada no limite
     out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW, incluir_ativos=True))
     assert out["resumo"]["ativos"] == 1 and out["resumo"]["sem_trend"] == 0
     assert out["linhas"][0]["achado_por"].startswith("nome") and out["linhas"][0]["grupo"] == "Workgroup"
@@ -116,6 +115,9 @@ def test_unmanaged_match_is_reported_as_no_trend(monkeypatch):
     class V1:
         def endpoints(self, max_items):
             return [{"endpointName": "ETN017AX0W4", "lastUsedIp": "10.17.10.100"}]
+
+        def search_endpoints(self, query, max_items=20):
+            return []
     monkeypatch.setattr(tc, "machines_from_faz", lambda q: (machines, "teste", []))
     monkeypatch.setattr(tc.visionone, "get_client", lambda: V1())
     monkeypatch.setattr(tc.database, "cache_get", lambda k: None)
