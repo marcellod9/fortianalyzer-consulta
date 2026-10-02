@@ -66,6 +66,29 @@ class Settings:
     v1_query_domain: str = field(default_factory=lambda: os.getenv("V1_DETECTION_QUERY_DOMAIN", 'request:"*{v}*"'))
     v1_query_ip: str = field(default_factory=lambda: os.getenv("V1_DETECTION_QUERY_IP", 'dst:"{v}" or src:"{v}"'))
 
+    # ---- Login (SSO Microsoft Entra ID) ----
+    # off = sem login (POC local, um usuário); entra = exige login Microsoft com MFA (Acesso Condicional)
+    auth_mode: str = field(default_factory=lambda: os.getenv("AUTH_MODE", "off").strip().lower())
+    entra_tenant_id: str = field(default_factory=lambda: os.getenv("ENTRA_TENANT_ID", "").strip())
+    entra_client_id: str = field(default_factory=lambda: os.getenv("ENTRA_CLIENT_ID", "").strip())
+    entra_client_secret: str = field(default_factory=lambda: os.getenv("ENTRA_CLIENT_SECRET", ""))
+    # alternativa ao segredo (recomendada pela Microsoft): certificado .pem com a chave privada + thumbprint
+    entra_cert_path: str = field(default_factory=lambda: os.getenv("ENTRA_CERT_PATH", "").strip())
+    entra_cert_thumbprint: str = field(default_factory=lambda: os.getenv("ENTRA_CERT_THUMBPRINT", "").strip())
+    entra_redirect_uri: str = field(default_factory=lambda: os.getenv("ENTRA_REDIRECT_URI", "").strip())
+    # opcional: contexto de autenticação (ex.: c1) que o Acesso Condicional liga ao MFA; o portal exige o claim acrs
+    entra_auth_context: str = field(default_factory=lambda: os.getenv("ENTRA_AUTH_CONTEXT", "").strip())
+    # login mais antigo que isso (minutos) pede autenticação de novo na Microsoft
+    entra_max_age_min: int = field(default_factory=lambda: max(5, _int("ENTRA_MAX_AGE_MIN", 480)))
+    # e-mails (UPN) dos administradores do portal, separados por vírgula
+    portal_admins: tuple = field(default_factory=lambda: tuple(
+        x.strip().lower() for x in os.getenv("PORTAL_ADMINS", "").split(",") if x.strip()))
+    # funções de aplicativo (App roles) do Entra que dão acesso, sem cadastro no portal
+    role_admin: str = field(default_factory=lambda: os.getenv("ENTRA_ROLE_ADMIN", "Portal.Admin").strip())
+    role_reports: str = field(default_factory=lambda: os.getenv("ENTRA_ROLE_RELATORIOS", "Relatorios.Emitir").strip())
+    session_hours: int = field(default_factory=lambda: max(1, min(_int("PORTAL_SESSION_HOURS", 8), 24)))
+    session_idle_min: int = field(default_factory=lambda: max(5, min(_int("PORTAL_SESSION_IDLE_MIN", 60), 480)))
+
     db_path: Path = field(default_factory=lambda: Path(os.getenv("PORTAL_DB", BASE_DIR / "database" / "fortilogportal.db")))
     log_dir: Path = BASE_DIR / "logs"
     export_dir: Path = BASE_DIR / "exports"
@@ -74,6 +97,14 @@ class Settings:
     @property
     def faz_configured(self) -> bool:
         return bool(self.faz_url and self.faz_token)
+
+    @property
+    def auth_enabled(self) -> bool:
+        return self.auth_mode == "entra"
+
+    @property
+    def redirect_uri(self) -> str:
+        return self.entra_redirect_uri or f"http://localhost:{self.port}/auth/callback"
 
     @property
     def v1_configured(self) -> bool:
@@ -95,6 +126,13 @@ class Settings:
             "v1_lookback_days": self.v1_lookback_days,
             "v1_sandbox_enabled": self.v1_sandbox_enabled,
             "cache_ttl": self.cache_ttl,
+            "auth_mode": self.auth_mode,
+            "entra_tenant_id": self.entra_tenant_id,
+            "entra_client_id": self.entra_client_id,
+            "entra_credencial": "certificado" if self.entra_cert_path else ("segredo" if self.entra_client_secret else "não definida"),
+            "entra_redirect_uri": self.redirect_uri,
+            "entra_auth_context": self.entra_auth_context,
+            "portal_admins": len(self.portal_admins),
             "db_path": str(self.db_path),
             "env_file": str(ENV_FILE),
         }

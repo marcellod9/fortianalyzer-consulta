@@ -21,7 +21,8 @@ Regra:     1 - Internet_Corporativa
 Firewall:  FW-BRASILIA
 ```
 
-> **Fase 1 (POC):** roda só em `http://127.0.0.1:8000`, sem Docker e sem autenticação. Não é para produção.
+> **Fase 1 (POC):** roda só neste computador, sem Docker. O login com a conta Microsoft (Entra ID, com MFA)
+> é ligado com `AUTH_MODE=entra` (veja [docs/CONFIGURACAO_ENTRA.md](docs/CONFIGURACAO_ENTRA.md)).
 
 ## Início rápido (Windows)
 
@@ -46,7 +47,8 @@ Quer ver a interface antes de ter os tokens? Coloque `PORTAL_DEMO=true` no `conf
 | **Relatórios** | Relatório de acessos geral, por usuário, IP, site ou aplicação, com gráficos de pizza (categorias, firewalls), barras (sites, aplicações, usuários, IPs, máquinas) e linha do tempo de permitidos x bloqueados; tabela completa de quem acessou (usuário, IP, máquina, acessos, primeiro e último acesso, firewall) ou, no relatório de um usuário, do que ele acessou; baixa em PDF (com os gráficos) ou Excel (gráficos e eventos) |
 | **Correlação** | Um indicador cruzado nas duas ferramentas, com análise consolidada |
 | **Histórico** | Todas as consultas (data, usuário, tipo, termo, resultado), com filtro e exportação |
-| **Configuração** | Teste de conexão das APIs, tempo de resposta, logs internos e limpeza de cache |
+| **Configuração** | Teste de conexão das APIs, tempo de resposta, logs internos e limpeza de cache (só administradores) |
+| **Acessos** | Quem entrou no portal e quem pode emitir relatórios: o administrador inclui o e-mail e liga ou desliga a permissão (só administradores) |
 
 ## Estrutura
 
@@ -76,6 +78,7 @@ FortiLogPortal
 
 - [Instalação](docs/INSTALACAO.md)
 - [Configuração das APIs (FortiAnalyzer e Vision One)](docs/CONFIGURACAO_APIS.md)
+- [Login Microsoft Entra ID com MFA e permissão de relatórios](docs/CONFIGURACAO_ENTRA.md)
 - [Execução local e uso](docs/EXECUCAO_LOCAL.md)
 - [Atualização](docs/ATUALIZACAO.md)
 - [Arquitetura, banco de dados e API REST](docs/ARQUITETURA.md)
@@ -85,6 +88,8 @@ FortiLogPortal
 
 - Tokens só em `config\.env` (fora do git); a tela de configuração nunca os exibe.
 - O portal escuta apenas em `127.0.0.1`.
+- Com `AUTH_MODE=entra`: login Microsoft (OIDC + PKCE, MSAL), MFA pelo Acesso Condicional, sessão no
+  servidor com cookie HttpOnly, permissão de relatórios por usuário e auditoria de login e permissões.
 - Todo filtro digitado é validado antes de virar expressão do FortiAnalyzer (sem injeção de filtro).
 - Auditoria local em `logs\auditoria.log` e na tabela `query_history` (os logs contêm dados pessoais; LGPD).
 - Exportações protegidas contra injeção de fórmulas no Excel.

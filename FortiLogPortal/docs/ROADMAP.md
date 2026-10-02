@@ -2,10 +2,9 @@
 
 ## Fase 2: uso pela equipe
 
-- **Autenticação corporativa**: Microsoft Entra ID (OIDC) com MFA; trocar o campo "Seu nome"
-  pelo usuário autenticado no histórico e na auditoria.
-- **RBAC**: perfis Sustentação (consulta), Segurança (tudo, inclusive Sandbox) e Auditoria
-  (histórico); restrição por ADOM/unidade.
+- **Autenticação corporativa**: feito (Entra ID com MFA, `AUTH_MODE=entra`; permissão de relatórios por usuário).
+- **RBAC**: além de Relatórios, perfis Segurança (Sandbox) e Auditoria (histórico de todos);
+  restrição por ADOM/unidade; liberar por grupo do Entra.
 - **Servidor interno**: publicar em uma VM com HTTPS (certificado interno), serviço do Windows
   ou systemd, e chave do Vision One em cofre (Windows Credential Manager ou Azure Key Vault).
 - **Retenção/LGPD**: expurgo automático do histórico e das exportações após N dias.

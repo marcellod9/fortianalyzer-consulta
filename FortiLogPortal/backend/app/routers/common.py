@@ -21,8 +21,11 @@ except Exception:  # pragma: no cover
 
 
 def who(request: Request) -> str:
-    """Usuário da consulta. Sem autenticação nesta fase: nome informado na interface
-    (header X-Portal-User) ou o usuário do Windows que iniciou o portal."""
+    """Usuário da consulta: o e-mail do login Microsoft (AUTH_MODE=entra). Sem login, o nome informado
+    na interface (header X-Portal-User) ou o usuário do Windows que iniciou o portal."""
+    user = getattr(request.state, "user", None)
+    if user:
+        return user.upn
     u = (request.headers.get("x-portal-user") or "").strip()
     return u if u and SAFE_USER.match(u) else OS_USER
 

@@ -46,6 +46,8 @@ SQLite (database/fortilogportal.db)
 | `temp_data` | informações temporárias: resultados para exportação (1 h) |
 | `ioc_lookup` | resultado de cada consulta de reputação (dashboard Vision One) |
 | `sandbox_run` | envios ao Sandbox (tarefa, URL, quem, quando, status e resultado), para reaproveitar a mesma URL por 24 h; apagados após 7 dias |
+| `portal_user` | usuários do login Microsoft (oid, e-mail, nome, último login) e a permissão de relatórios, com quem alterou e quando |
+| `auth_session` | sessões de login ativas: hash do cookie, usuário, funções do Entra, IP, criação, último uso e expiração |
 | `meta` | versão do esquema |
 
 Credenciais **não** ficam no banco.
@@ -76,6 +78,15 @@ Credenciais **não** ficam no banco.
 | GET | `/api/history?type=&q=` | histórico |
 | GET | `/api/export/{result_id}.{csv\|xlsx\|pdf}`, `/api/export/history.{fmt}` | exportação |
 | GET | `/api/app-log`, DELETE `/api/cache` | diagnóstico |
+| GET | `/auth/login?next=`, `/auth/callback`, `/auth/logout` | login Microsoft Entra ID (`AUTH_MODE=entra`) |
+| GET | `/api/me` | usuário logado e permissões |
+| GET, POST | `/api/acessos` | lista usuários / libera relatórios por e-mail `{email, relatorios}` (administrador) |
+| PUT, DELETE | `/api/acessos/{id}` | liga/desliga relatórios / remove o usuário e encerra as sessões (administrador) |
+
+Com `AUTH_MODE=entra`, toda rota exige sessão, exceto `/auth/*`, `/static/*` e `/api/health`. Sem sessão, a API
+responde 401 e as páginas levam ao login. POST, PUT e DELETE exigem o cabeçalho `X-FLP-Request: 1`. Relatórios
+exigem a permissão de relatórios, e `/api/status*`, `/api/app-log`, `/api/cache` e `/api/acessos*` exigem administrador
+(403).
 
 `LogQuery`: `adom, devices[], logtype, start, end, srcip, dstip, srcport, dstport, user, url,
 hostname, policy, profile, srcintf, dstintf, action, only_blocked, limit`.

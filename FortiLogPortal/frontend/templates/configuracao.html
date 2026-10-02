@@ -37,7 +37,10 @@
 document.addEventListener("DOMContentLoaded", () => {
   const labels = { demo: "Modo demonstração", faz_url: "FortiAnalyzer URL", faz_token_definido: "Token FAZ definido", faz_verify_tls: "Verificação TLS FAZ",
     faz_default_adom: "ADOM padrão", faz_max_results: "Máx. linhas por consulta", v1_base_url: "Vision One API", v1_token_definido: "Chave Vision One definida",
-    v1_lookback_days: "Janela de busca Vision One (dias)", v1_sandbox_enabled: "Sandbox habilitado", cache_ttl: "Cache (segundos)", db_path: "Banco SQLite" };
+    v1_lookback_days: "Janela de busca Vision One (dias)", v1_sandbox_enabled: "Sandbox habilitado", cache_ttl: "Cache (segundos)", db_path: "Banco SQLite",
+    auth_mode: "Login (AUTH_MODE)", entra_tenant_id: "Entra ID: locatário", entra_client_id: "Entra ID: aplicativo",
+    entra_credencial: "Entra ID: credencial", entra_redirect_uri: "Entra ID: URI de redirecionamento",
+    entra_auth_context: "Entra ID: contexto de autenticação (MFA)", portal_admins: "Administradores (PORTAL_ADMINS)" };
   const fmt = (v) => v === true ? '<span class="badge text-bg-success">sim</span>' : v === false ? '<span class="badge text-bg-secondary">não</span>' : FLP.esc(v || "-");
   async function load() {
     const s = await FLP.api("/api/status");

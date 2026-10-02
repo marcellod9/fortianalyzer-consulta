@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · FortiLogPortal</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <script>try { const t = localStorage.getItem("flp-theme"); if (t) document.documentElement.setAttribute("data-bs-theme", t); } catch {}</script>
+</head>
+<body class="bg-body-tertiary d-flex align-items-center justify-content-center" style="min-height:100vh">
+  <div class="card shadow-sm" style="max-width:30rem;width:calc(100% - 2rem)">
+    <div class="card-body p-4">
+      <div class="fs-5 mb-3"><i class="bi bi-shield-lock"></i> FortiLogPortal</div>
+      <h1 class="h5">{{ title }}</h1>
+      <p class="text-body-secondary mb-4">{{ text }}</p>
+      {% if login %}<a class="btn btn-primary" href="/auth/login"><i class="bi bi-microsoft"></i> Entrar com a conta Microsoft</a>{% endif %}
+    </div>
+  </div>
+</body>
+</html>

@@ -9,6 +9,8 @@ Tabelas:
   ioc_lookup      resultado consolidado das consultas de reputação (dashboard)
   policy_name     nome das regras por firewall, aprendido dos logs de tráfego
   sandbox_run     URLs enviadas ao Sandbox e o resultado, para reaproveitar a análise por 24 h
+  portal_user     usuários do login Microsoft e quem pode emitir relatórios
+  auth_session    sessões de login ativas (só o hash do cookie fica gravado)
 """
 import json
 import sqlite3
@@ -101,6 +103,32 @@ CREATE TABLE IF NOT EXISTS sandbox_run (
     finished_at REAL
 );
 CREATE INDEX IF NOT EXISTS ix_sandbox_url ON sandbox_run(url, submitted_at);
+
+CREATE TABLE IF NOT EXISTS portal_user (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    oid TEXT UNIQUE,
+    upn TEXT NOT NULL,
+    name TEXT,
+    can_reports INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    updated_at TEXT,
+    updated_by TEXT,
+    last_login TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_user_upn ON portal_user(upn);
+
+CREATE TABLE IF NOT EXISTS auth_session (
+    token_hash TEXT PRIMARY KEY,
+    oid TEXT NOT NULL,
+    upn TEXT NOT NULL,
+    name TEXT,
+    roles TEXT,
+    ip TEXT,
+    created_at REAL NOT NULL,
+    last_seen REAL NOT NULL,
+    expires_at REAL NOT NULL
+);
 """
 
 
@@ -342,3 +370,97 @@ def sandbox_runs_for(url: str, since: float) -> list[dict]:
         rows = c.execute("SELECT * FROM sandbox_run WHERE url = ? AND submitted_at >= ? ORDER BY submitted_at DESC",
                          (url, since)).fetchall()
     return [_sandbox_row(r) for r in rows]
+
+
+# ---- usuários do portal e sessões de login ----------------------------------------------
+USER_COLS = "id, oid, upn, name, can_reports, created_at, created_by, updated_at, updated_by, last_login"
+
+
+def user_login(oid: str, upn: str, name: str) -> dict:
+    """Registra o login. Uma permissão cadastrada só pelo e-mail é ligada ao objeto do Entra (oid) no 1º login;
+    depois disso vale o oid, que não muda, e não o e-mail, que pode ser reaproveitado."""
+    upn = upn.lower()
+    with connect() as c:
+        r = c.execute("SELECT id FROM portal_user WHERE oid = ?", (oid,)).fetchone()
+        if not r:
+            r = c.execute("SELECT id FROM portal_user WHERE oid IS NULL AND upn = ? ORDER BY id LIMIT 1", (upn,)).fetchone()
+        if r:
+            c.execute("UPDATE portal_user SET oid = ?, upn = ?, name = ?, last_login = ? WHERE id = ?",
+                      (oid, upn, name, now_iso(), r["id"]))
+            uid = r["id"]
+        else:
+            uid = c.execute("INSERT INTO portal_user(oid, upn, name, created_at, created_by, last_login) VALUES (?,?,?,?,?,?)",
+                            (oid, upn, name, now_iso(), "login", now_iso())).lastrowid
+        return dict(c.execute(f"SELECT {USER_COLS} FROM portal_user WHERE id = ?", (uid,)).fetchone())
+
+
+def user_by_oid(oid: str) -> dict | None:
+    with connect() as c:
+        r = c.execute(f"SELECT {USER_COLS} FROM portal_user WHERE oid = ?", (oid,)).fetchone()
+    return dict(r) if r else None
+
+
+def user_list() -> list[dict]:
+    with connect() as c:
+        rows = c.execute(f"SELECT {USER_COLS} FROM portal_user ORDER BY can_reports DESC, lower(coalesce(name, upn))").fetchall()
+    return [dict(r) for r in rows]
+
+
+def user_get(uid: int) -> dict | None:
+    with connect() as c:
+        r = c.execute(f"SELECT {USER_COLS} FROM portal_user WHERE id = ?", (uid,)).fetchone()
+    return dict(r) if r else None
+
+
+def user_set_reports(upn: str, allowed: bool, by: str, uid: int | None = None) -> dict:
+    """Concede/retira a permissão de relatórios. Sem uid, procura pelo e-mail (ou cadastra para o 1º login)."""
+    upn = upn.lower()
+    with connect() as c:
+        if uid is None:
+            r = c.execute("SELECT id FROM portal_user WHERE upn = ? ORDER BY last_login IS NULL, last_login DESC LIMIT 1",
+                          (upn,)).fetchone()
+            uid = r["id"] if r else None
+        if uid is None:
+            uid = c.execute("INSERT INTO portal_user(upn, can_reports, created_at, created_by, updated_at, updated_by)"
+                            " VALUES (?,?,?,?,?,?)", (upn, int(allowed), now_iso(), by, now_iso(), by)).lastrowid
+        else:
+            c.execute("UPDATE portal_user SET can_reports = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+                      (int(allowed), now_iso(), by, uid))
+        return dict(c.execute(f"SELECT {USER_COLS} FROM portal_user WHERE id = ?", (uid,)).fetchone())
+
+
+def user_delete(uid: int) -> None:
+    with connect() as c:
+        r = c.execute("SELECT oid FROM portal_user WHERE id = ?", (uid,)).fetchone()
+        if r and r["oid"]:
+            c.execute("DELETE FROM auth_session WHERE oid = ?", (r["oid"],))
+        c.execute("DELETE FROM portal_user WHERE id = ?", (uid,))
+
+
+def session_add(token_hash: str, oid: str, upn: str, name: str, roles: list[str], ip: str, hours: int) -> None:
+    now = time.time()
+    with connect() as c:
+        c.execute("DELETE FROM auth_session WHERE expires_at < ?", (now,))
+        c.execute("INSERT INTO auth_session(token_hash, oid, upn, name, roles, ip, created_at, last_seen, expires_at)"
+                  " VALUES (?,?,?,?,?,?,?,?,?)",
+                  (token_hash, oid, upn, name, json.dumps(roles), ip, now, now, now + hours * 3600))
+
+
+def session_get(token_hash: str) -> dict | None:
+    with connect() as c:
+        r = c.execute("SELECT * FROM auth_session WHERE token_hash = ?", (token_hash,)).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    d["roles"] = json.loads(d["roles"] or "[]")
+    return d
+
+
+def session_touch(token_hash: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE auth_session SET last_seen = ? WHERE token_hash = ?", (time.time(), token_hash))
+
+
+def session_delete(token_hash: str) -> None:
+    with connect() as c:
+        c.execute("DELETE FROM auth_session WHERE token_hash = ?", (token_hash,))

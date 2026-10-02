@@ -1,13 +1,13 @@
 """API REST do portal (consumida pela interface web; também pode ser usada por scripts)."""
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation
+from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -17,6 +17,8 @@ from ..services.visionone import get_client as v1
 from .common import tracked, who
 
 router = APIRouter(prefix="/api")
+ADMIN = [Depends(auth.require_admin)]
+REPORTS = [Depends(auth.require_reports)]
 
 REP_COLUMNS = [("campo", "Campo"), ("valor", "Valor")]
 
@@ -27,12 +29,12 @@ def health():
     return {"status": "ok", "versao": __version__, "demo": settings.demo}
 
 
-@router.get("/status")
+@router.get("/status", dependencies=ADMIN)
 def status():
     return {"config": settings.public_summary(), "integracoes": database.integration_stats(), "versao": __version__}
 
 
-@router.post("/status/test/{target}")
+@router.post("/status/test/{target}", dependencies=ADMIN)
 def test_integration(target: str):
     try:
         if target == "faz":
@@ -44,12 +46,12 @@ def test_integration(target: str):
     raise HTTPException(404, "Use faz ou v1")
 
 
-@router.get("/app-log")
+@router.get("/app-log", dependencies=ADMIN)
 def app_log(limit: int = Query(200, le=1000), level: str | None = None):
     return database.list_app_log(limit, level)
 
 
-@router.delete("/cache")
+@router.delete("/cache", dependencies=ADMIN)
 def clear_cache():
     return {"removidos": database.cache_purge(all_entries=True)}
 
@@ -331,7 +333,7 @@ def export_result(result_id: str, fmt: str, request: Request):
 
 
 # ---- relatórios ------------------------------------------------------------------------------
-@router.post("/reports")
+@router.post("/reports", dependencies=REPORTS)
 def report(q: reports.ReportQuery, request: Request, cache: bool = True):
     """Relatório de acessos (geral, usuário, IP, site ou aplicação) com os dados dos gráficos."""
     with tracked(request, "relatorio", q.title(), q.model_dump(mode="json")) as info:
@@ -342,7 +344,7 @@ def report(q: reports.ReportQuery, request: Request, cache: bool = True):
     return {**{k: v for k, v in rep.items() if k != "eventos"}, "report_id": rid, "eventos_exportaveis": len(rep["eventos"])}
 
 
-@router.get("/reports/{report_id}.{fmt}")
+@router.get("/reports/{report_id}.{fmt}", dependencies=REPORTS)
 def report_download(report_id: str, fmt: str, request: Request):
     if fmt not in ("pdf", "xlsx"):
         raise HTTPException(400, "Formato deve ser pdf ou xlsx")

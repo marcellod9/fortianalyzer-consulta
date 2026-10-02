@@ -23,6 +23,9 @@ def main() -> None:
 
     url = f"http://{settings.host}:{settings.port}"
     print(f"FortiLogPortal em {url}  (Ctrl+C para parar)")
+    if settings.auth_enabled:  # o login Microsoft volta para o endereço cadastrado no Entra (ex.: http://localhost:8000)
+        from app.services.auth import redirect_origin
+        url = redirect_origin()
     if not args.no_browser:
         threading.Timer(2.0, lambda: webbrowser.open(url)).start()
     uvicorn.run(

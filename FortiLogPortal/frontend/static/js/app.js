@@ -35,7 +35,7 @@ const FLP = (() => {
 
   // ---- chamadas à API -----------------------------------------------------------
   async function api(path, opts = {}) {
-    const headers = { "Accept": "application/json", ...(opts.headers || {}) };
+    const headers = { "Accept": "application/json", "X-FLP-Request": "1", ...(opts.headers || {}) };
     if (user()) headers["X-Portal-User"] = user();
     if (opts.body && typeof opts.body !== "string") {
       headers["Content-Type"] = "application/json";
@@ -44,6 +44,7 @@ const FLP = (() => {
     const resp = await fetch(path, { ...opts, headers });
     let data = null;
     try { data = await resp.json(); } catch { /* sem corpo */ }
+    if (resp.status === 401) relogin();
     if (!resp.ok) {
       const msg = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : `HTTP ${resp.status}`;
       throw new Error(msg);
@@ -51,10 +52,16 @@ const FLP = (() => {
     return data;
   }
 
+  // sessão do login Microsoft expirou: volta para o login e depois para esta mesma tela
+  function relogin() {
+    location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search);
+  }
+
   function download(path) {
     // download com o header de usuário via fetch + blob
     const headers = user() ? { "X-Portal-User": user() } : {};
     return fetch(path, { headers }).then(async (r) => {
+      if (r.status === 401) relogin();
       if (!r.ok) { let d = {}; try { d = await r.json(); } catch {} throw new Error(d.detail || `HTTP ${r.status}`); }
       const cd = r.headers.get("Content-Disposition") || "";
       const name = (cd.match(/filename="([^"]+)"/) || [])[1] || "export";
