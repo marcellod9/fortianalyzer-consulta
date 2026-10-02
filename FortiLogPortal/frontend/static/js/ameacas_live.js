@@ -68,7 +68,7 @@ FLP.threatsLive = (() => {
 
   // uma fonte por vez: o FAZ recusa buscas simultâneas do mesmo admin, e assim cada resultado já aparece no mapa
   const SOURCES = [["ips", "IPS"], ["botnet", "botnet"], ["virus", "antivírus"], ["malicioso", "sites maliciosos"],
-                   ["phishing", "phishing"], ["dns", "DNS"]];
+                   ["phishing", "phishing"], ["dns", "DNS"], ["trafego", "tráfego com ameaça"]];
   const OVERLAP_MS = 60000;  // margem para logs que chegam atrasados ao FAZ
   const p2 = (n) => String(n).padStart(2, "0");
   const local = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;

@@ -164,3 +164,38 @@ def test_api_threats_live_one_source_at_a_time():
         d = c.post("/api/threats/live", json={**body, "fontes": ["ips"]}).json()
         assert d["fontes"] == ["ips"] and d["eventos"] and {e["fonte"] for e in d["eventos"]} == {"ips"}
         assert c.post("/api/threats/live", json={**body, "fontes": ["x"]}).status_code == 422
+
+
+def test_ips_search_uses_faz_attack_logtype_and_falls_back():
+    seen = []
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        if body["method"] == "add":
+            seen.append(p["logtype"])
+            if p["logtype"] == "attack" and fail_attack:
+                return FakeResp(200, {"result": [{"status": {"code": -3, "message": "invalid logtype"}}]})
+            return FakeResp(200, {"result": {"tid": 7}})
+        if body["method"] == "get":
+            return FakeResp(200, {"result": {"percentage": 100, "data": [{"attack": "x"}], "total-count": 1}})
+        return FakeResp(200, {"result": {}})
+    fail_attack = False
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    assert c.search_logs("root", "ips", "a", "b", limit=5)["returned"] == 1 and seen == ["attack"]
+    fail_attack, seen[:] = True, []
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    assert c.search_logs("root", "ips", "a", "b", limit=5)["returned"] == 1 and seen == ["attack", "ips"]
+    seen.clear()
+    c.search_logs("root", "ips", "a", "b", limit=5)
+    assert seen == ["ips"]  # lembra que esta versão só aceita "ips"
+
+
+def test_traffic_with_threat_feeds_the_map():
+    with TestClient(app) as c:
+        body = {"start": (NOW - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M"), "end": NOW.strftime("%Y-%m-%dT%H:%M")}
+        d = c.post("/api/threats", json=body).json()
+        assert d["fontes"]["trafego"]["filtro"].endswith("crscore>0") and d["fontes"]["trafego"]["lidos"]
+        rows = [r for r in threats._read_sources(threats.ThreatQuery(**body), 200, ["trafego"])[0]]
+        assert rows and all(r["fonte"] == "trafego" and r["ameaca"] for r in rows)
+        inbound = [r for r in rows if r["entrada"]]
+        assert inbound and all(r["pais"] for r in inbound)

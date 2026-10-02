@@ -40,7 +40,12 @@ handlers padrão de IOC estejam habilitados (*Incidents & Events > Handlers*). E
 correspondente mostra o aviso e o resto da aba continua funcionando.
 
 O **Mapa de ameaças** usa os campos `srccountry`/`dstcountry` dos próprios logs de ameaça (o país do lado externo:
-a origem num ataque de entrada do IPS, o destino nos demais). O desenho do mapa é local
+a origem num ataque de entrada do IPS, o destino nos demais).
+Além dos logs de IPS, antivírus, filtro web, botnet e DNS, entram os **logs de tráfego com reputação**
+(`logtype` traffic com o filtro `crscore>0`; campos `crscore`, `crlevel` e `threats`), a mesma base do Threat Map e
+do Top Threats do FAZ. Neles, quando a origem tem país e o destino é a rede interna, o país mostrado é o de origem.
+A busca de IPS usa o tipo de log `attack`, o nome do IPS na API do FortiAnalyzer; se a versão recusar, o portal
+tenta `ips` uma vez e passa a usar esse nome. O desenho do mapa é local
 (`frontend/static/vendor/worldmap`, Natural Earth via world-atlas, licença ISC), sem acesso à internet.
 
 O **Mapa em tempo real** repete a mesma busca de logs a cada 15, 30 ou 60 s, uma fonte por vez (IPS, botnet,

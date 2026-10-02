@@ -90,7 +90,7 @@ FLP.threats = (() => {
     return `<div class="card mb-3"><div class="card-body">
       <h6 class="mb-1"><i class="bi bi-globe-americas"></i> Mapa de ameaças</h6>
       <div class="small text-body-secondary mb-2">País do lado externo de cada ameaça: de onde veio o ataque (IPS de entrada) ou para onde a máquina
-        tentou ir (site malicioso, botnet, download com vírus).${m.sem_pais ? ` ${num(m.sem_pais)} evento(s) sem país (rede interna ou não identificado).` : ""}</div>
+        tentou ir (site malicioso, botnet, download com vírus); no tráfego com ameaça, o lado que não é a rede interna.${m.sem_pais ? ` ${num(m.sem_pais)} evento(s) sem país (rede interna ou não identificado).` : ""}</div>
       <div class="row g-3"><div class="col-xl-8"><div class="tmap position-relative"><div class="small text-body-secondary">Carregando o mapa...</div></div>
         <div class="tmap-legend small mt-1"></div></div>
       <div class="col-xl-4"><table class="table table-sm small mb-0"><thead><tr><th>País</th><th class="text-end">Eventos</th><th class="text-end">Não bloq.</th></tr></thead>

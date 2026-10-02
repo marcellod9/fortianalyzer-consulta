@@ -40,7 +40,11 @@ SOURCES = {
     "phishing": ("Phishing", "webfilter", "Phishing", "high"),
     "botnet": ("Botnet (aplicação)", "app-ctrl", "Botnet", "critical"),
     "dns": ("Domínio malicioso (DNS)", "dns", "Malicious", "high"),
+    # logs de tráfego com reputação (crscore/crlevel/threats): a mesma base do Threat Map e do Top Threats do FAZ
+    "trafego": ("Tráfego com ameaça", "traffic", None, "low"),
 }
+# filtro extra que o LogQuery não monta
+EXTRA_FILTER = {"botnet": 'appcat~"Botnet"', "trafego": "crscore>0"}
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4, "information": 4, "": 5}
 SEVERITY_NAMES = {"critical": "Crítica", "high": "Alta", "medium": "Média", "low": "Baixa", "info": "Informativa",
                   "information": "Informativa", "": "Não informada"}
@@ -90,10 +94,16 @@ def threat_row(row: dict, source: str) -> dict:
         ameaca = log.get("virus") or log.get("msg") or "Malware"
     elif source == "botnet":
         ameaca = log.get("app") or "Botnet"
+    elif source == "trafego":
+        t = log.get("threats")
+        t = ", ".join(str(x) for x in t) if isinstance(t, list) else str(t or "")
+        ameaca = t or log.get("app") or log.get("service") or "Conexão suspeita"
     else:
         ameaca = row.get("site") or row.get("ip_destino") or "-"
     # no IPS o ataque pode vir de fora (origem externa, destino interno): a máquina afetada é o destino
     inbound = source == "ips" and str(log.get("direction") or "").lower() == "incoming"
+    if source == "trafego":  # tráfego vindo de fora: o país externo é o de origem
+        inbound = bool(_country(log.get("srccountry"))) and not _country(log.get("dstcountry"))
     return {
         "data_hora": row["data_hora"], "fonte": source, "tipo": nome, "ameaca": str(ameaca)[:200],
         "severidade": _severity(log, default_sev),
@@ -416,11 +426,11 @@ def _read_sources(q: ThreatQuery, limit: int, only: list[str] | None = None) -> 
         lq = q.log_query(lt, cat)
         lq.limit = limit
         expr = lq.filter_expr()
-        if sid == "botnet":
-            expr = " and ".join(p for p in (expr, 'appcat~"Botnet"') if p)
+        if sid in EXTRA_FILTER:
+            expr = " and ".join(p for p in (expr, EXTRA_FILTER[sid]) if p)
         fontes[sid] = {"nome": nome, "filtro": expr, "total": 0, "lidos": 0}
         try:
-            res = _search(lq, expr) if sid == "botnet" else run_query(lq, use_cache=False, save_cache=False, policy_names=False)
+            res = _search(lq, expr) if sid in EXTRA_FILTER else run_query(lq, use_cache=False, save_cache=False, policy_names=False)
         except FazError as e:
             fontes[sid]["erro"] = str(e)
             continue

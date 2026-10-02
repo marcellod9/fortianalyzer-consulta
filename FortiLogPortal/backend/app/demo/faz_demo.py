@@ -140,16 +140,34 @@ class DemoFazClient:
                          "sentbyte": rnd.randint(100, 90000), "rcvdbyte": rnd.randint(100, 900000)})
             if not deny and base["policyid"] == 0:
                 base["policyid"], base["policyname"] = 1, "Internet_Corporativa"
+            if deny or rnd.random() < 0.1:  # o FortiOS soma reputação (crscore) e ameaças no log de tráfego
+                inbound = rnd.random() < 0.4
+                if inbound:
+                    base.update({"srcip": f"45.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}",
+                                 "dstip": base["srcip"], "srccountry": base["dstcountry"], "dstcountry": "Reserved",
+                                 "user": ""})
+                level, score = rnd.choice([("low", 5), ("medium", 10), ("high", 30)])
+                base.update({"crscore": score, "crlevel": level, "craction": 2,
+                             "threats": ["blocked-connection" if deny else "Network.Service"]})
         return base
 
     @staticmethod
     def _match(log: dict, filter_expr: str) -> bool:
         for part in [p.strip() for p in filter_expr.split(" and ") if p.strip()]:
-            m = re.match(r'^(\w+)(!=|=|~)"?(.*?)"?$', part)
+            m = re.match(r'^(\w+)(!=|>=|>|=|~)"?(.*?)"?$', part)
             if not m:
                 continue
             field, op, val = m.groups()
             cur = str(log.get(field, ""))
+            if op in (">", ">="):
+                try:
+                    n = float(log.get(field) or 0)
+                    ok = n > float(val) if op == ">" else n >= float(val)
+                except ValueError:
+                    ok = False
+                if not ok:
+                    return False
+                continue
             if op == "~":
                 ok = val.lower() in cur.lower()
             elif "/" in val and field in ("srcip", "dstip"):

@@ -53,6 +53,7 @@ class FazClient:
         self._ids = itertools.count(1)
         self._id_lock = threading.Lock()
         self._http = session or requests.Session()
+        self._alias_off: set[str] = set()  # tipos de log em que o nome do FAZ (FAZ_LOGTYPE) foi recusado
         self._http.headers.update({"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
 
     def close(self) -> None:
@@ -129,8 +130,26 @@ class FazClient:
     # Cada tarefa (tid) entrega uma página só: o "add" já leva limit e offset (o FAZ para de procurar quando acha
     # "limit" eventos; sem limit, ele usa o padrão de 100) e o "get" lê essa página. A próxima página é uma busca
     # nova com offset maior. O total vem em "total-count" e é um piso: com a página cheia, pode haver mais.
+    # nome do tipo de log na API do FAZ quando difere do nome do FortiOS (IPS = "attack" no FortiAnalyzer)
+    FAZ_LOGTYPE = {"ips": "attack"}
+
     def search_logs(self, adom: str, logtype: str, start: str, end: str, filter_expr: str = "",
                     devices: list[str] | None = None, limit: int = 500) -> dict:
+        alias = self.FAZ_LOGTYPE.get(logtype)
+        if not alias or logtype in self._alias_off:
+            return self._search_logs(adom, logtype, start, end, filter_expr, devices, limit)
+        try:
+            return self._search_logs(adom, alias, start, end, filter_expr, devices, limit)
+        except FazError as e:
+            if "permiss" in str(e).lower() or "Tempo limite" in str(e):
+                raise
+            # versão que só aceita o nome do FortiOS: tenta uma vez e lembra
+            res = self._search_logs(adom, logtype, start, end, filter_expr, devices, limit)
+            self._alias_off.add(logtype)
+            return res
+
+    def _search_logs(self, adom: str, logtype: str, start: str, end: str, filter_expr: str = "",
+                     devices: list[str] | None = None, limit: int = 500) -> dict:
         rows: list = []
         total = 0
         prev_first = None
