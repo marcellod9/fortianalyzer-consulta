@@ -29,6 +29,7 @@ PAGES = [
     ("/diagnostico", "diagnostico", "Diagnóstico", "clipboard2-pulse"),
     ("/logs", "logs", "Logs", "list-ul"),
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
+    ("/relatorios", "relatorios", "Relatórios", "pie-chart"),
     ("/correlacao", "correlacao", "Correlação", "diagram-3"),
     ("/historico", "historico", "Histórico", "clock-history"),
     ("/configuracao", "configuracao", "Configuração", "gear"),

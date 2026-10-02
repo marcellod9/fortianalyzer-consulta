@@ -12,6 +12,8 @@ FastAPI (backend/app)
         ├── faz_filters.py     validação + expressão de filtro
         ├── logsearch.py       busca normalizada, bloqueios em paralelo, cache
         ├── diagnosis.py       diagnóstico de acesso (4 tipos de log de uma vez + conclusão para o N1)
+        ├── reports.py         relatórios de acesso: contagens e dados dos gráficos (filtro web + aplicações)
+        ├── report_export.py   relatório em PDF (gráficos reportlab) e Excel (gráficos openpyxl)
         ├── explain.py         normalização e linguagem simples
         ├── visionone.py       cliente REST v3.0 (requests)       ──HTTPS──▶ Vision One
         ├── reputation.py      reputação consolidada de IP/domínio/URL (Vision One + categoria do FortiGuard)
@@ -69,6 +71,8 @@ Credenciais **não** ficam no banco.
 | GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |
 | POST | `/api/correlation` | `{indicator, start, end, adom}` |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
+| POST | `/api/reports` | `{tipo: geral\|usuario\|ip\|site\|aplicacao, valor, start, end, adom, devices, somente_bloqueios, top}`: relatório com os dados dos gráficos e `report_id` |
+| GET | `/api/reports/{report_id}.pdf\|xlsx` | baixa o relatório (1 h) |
 | GET | `/api/history?type=&q=` | histórico |
 | GET | `/api/export/{result_id}.{csv\|xlsx\|pdf}`, `/api/export/history.{fmt}` | exportação |
 | GET | `/api/app-log`, DELETE `/api/cache` | diagnóstico |

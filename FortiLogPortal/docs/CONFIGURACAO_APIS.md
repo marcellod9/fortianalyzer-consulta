@@ -21,6 +21,9 @@ no Fortinet Developer Network (FNDN):
 | `get /logview/adom/{adom}/logsearch/{tid}` | lê o resultado até `percentage = 100` |
 | `delete /logview/adom/{adom}/logsearch/{tid}` | libera a tarefa no FAZ |
 
+A aba **Relatórios** usa a mesma busca (filtro web e controle de aplicações), então não precisa de
+permissão extra além de *Log View*.
+
 ### Criar o acesso (no FortiAnalyzer)
 
 1. **System Settings > Admin > Profiles**: crie um perfil **somente leitura** com *Log View*
@@ -45,6 +48,7 @@ ambiente atual é 7.4.7).
 | `FAZ_VERIFY_TLS` | `true` | `true`, `false` ou caminho do `.pem` da CA interna |
 | `FAZ_DEFAULT_ADOM` | `root` | ADOM selecionada por padrão |
 | `FAZ_MAX_RESULTS` | `1000` | máximo de linhas por consulta |
+| `REPORT_MAX_ROWS` | `5000` | Relatórios: eventos lidos por tipo de log para os gráficos (os mais recentes do período; o total vem do FAZ) |
 | `FAZ_SEARCH_TIMEOUT` | `120` | segundos até desistir de uma busca |
 
 Se o certificado do FAZ for emitido pela CA interna, exporte a CA em Base64 (`.pem`/`.cer`),

@@ -41,9 +41,13 @@ o usuário do Windows que iniciou o servidor.
 6. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
    esteja na lista de Suspicious Objects do tenant. Para sites acessados nas últimas 24 h, a linha
    *FortiGuard* mostra a categoria do site e ela entra no veredito (ex.: Phishing vira Malicioso).
-7. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
-8. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
-9. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
+7. **Relatórios**: gere o *Geral (todos)* do último dia e depois *Por usuário* com o login de
+   alguém da equipe. Confira os totais com o FortiAnalyzer (Log View, mesmo período e filtro) e
+   baixe o PDF e o Excel. Se aparecer o aviso de amostra, o período tem mais eventos do que
+   `REPORT_MAX_ROWS` (padrão 5000 por tipo de log): os gráficos usam os mais recentes.
+8. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
+9. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
+10. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
 
 ## Dicas de desempenho
 

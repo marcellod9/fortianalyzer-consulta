@@ -22,7 +22,10 @@
 ## FortiAnalyzer
 
 - Paginação além de `FAZ_MAX_RESULTS` (offset no `get logsearch`).
-- Relatórios prontos via FortiView/Reports do FAZ para o dashboard, em vez de amostras.
+- Relatórios com totais exatos de períodos longos via FortiView (`/fortiview/adom/{adom}/{view}/run`): a aba
+  Relatórios usa a busca de logs porque, em testes publicados de outras versões, o FortiView recusa filtro
+  por usuário/aplicação e o `top-websites` agrupa por categoria, não por site. Validar no FAZ 7.4.7 antes.
+- Rodar os relatórios nativos do FAZ (Reports) e baixar o PDF pelo portal.
 - Consultas salvas ("o que o IP X acessou hoje", "bloqueios do usuário Y nesta semana").
 - Nome amigável de regras e objetos via FortiManager (se disponível).
 

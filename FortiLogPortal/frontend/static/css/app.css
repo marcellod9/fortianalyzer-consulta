@@ -96,3 +96,17 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
 @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 .table-logs tr.row-new > td { animation: row-new 4s ease-out; }
 @keyframes row-new { 0%, 30% { background-color: rgba(var(--bs-warning-rgb), .35); } 100% { background-color: transparent; } }
+
+/* ---- Relatórios ---- */
+.rep-chart { position: relative; }
+.rep-chart.rep-pie { height: 260px; }
+.rep-chart.rep-line { height: 260px; }
+.rep-meter { display: flex; gap: 2px; height: 22px; border-radius: 4px; overflow: hidden; }
+.rep-swatch { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .4rem; vertical-align: -1px; }
+.rep-table { max-height: 320px; overflow: auto; }
+@media print {
+  .flp-sidebar, header, .no-print, .toast-container { display: none !important; }
+  .flp-main { margin: 0 !important; }
+  .rep-card { break-inside: avoid; }
+  .rep-table { max-height: none; overflow: visible; }
+}

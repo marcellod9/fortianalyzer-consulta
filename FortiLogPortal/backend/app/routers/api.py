@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import correlation, dashboard, diagnosis, explain, export, machine, reputation
+from ..services import correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -327,4 +327,31 @@ def export_result(result_id: str, fmt: str, request: Request):
     content, filename = export.build(fmt, data["title"], data["columns"], data["rows"], data.get("meta"))
     database.add_history(who(request), "exportacao", f"{data['title']} ({fmt})", "ok", result_count=len(data["rows"]),
                          summary=filename)
+    return _download(content, filename, fmt)
+
+
+# ---- relatórios ------------------------------------------------------------------------------
+@router.post("/reports")
+def report(q: reports.ReportQuery, request: Request, cache: bool = True):
+    """Relatório de acessos (geral, usuário, IP, site ou aplicação) com os dados dos gráficos."""
+    with tracked(request, "relatorio", q.title(), q.model_dump(mode="json")) as info:
+        rep = reports.run_report(q, use_cache=cache)
+        info.update(count=rep["resumo"]["eventos"], blocked=rep["resumo"]["bloqueados"],
+                    summary=f"{rep['resumo']['eventos']} eventos, {len(rep['graficos'])} gráficos")
+    rid = reports.store(rep)
+    return {**{k: v for k, v in rep.items() if k != "eventos"}, "report_id": rid, "eventos_exportaveis": len(rep["eventos"])}
+
+
+@router.get("/reports/{report_id}.{fmt}")
+def report_download(report_id: str, fmt: str, request: Request):
+    if fmt not in ("pdf", "xlsx"):
+        raise HTTPException(400, "Formato deve ser pdf ou xlsx")
+    if not report_id.isalnum():
+        raise HTTPException(400, "Identificador inválido")
+    rep = database.temp_get(f"report:{report_id}")
+    if not rep:
+        raise HTTPException(404, "O relatório expirou; gere de novo para exportar.")
+    content, filename = report_export.build(fmt, rep, reports.EVENT_COLUMNS)
+    database.add_history(who(request), "exportacao", f"{rep['titulo']} ({fmt})", "ok",
+                         result_count=rep["resumo"]["eventos"], summary=filename)
     return _download(content, filename, fmt)
