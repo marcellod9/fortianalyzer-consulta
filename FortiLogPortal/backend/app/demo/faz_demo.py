@@ -29,6 +29,8 @@ SITES = [
 ]
 APPS = [("Facebook", "Social.Media", "block"), ("BitTorrent", "P2P", "block"), ("Microsoft.Teams", "Collaboration", "pass"),
         ("YouTube", "Video/Audio", "pass"), ("Tor", "Proxy", "block"), ("Emotet.Botnet", "Botnet", "block")]
+COUNTRIES = ["United States", "United States", "Brazil", "Brazil", "Brazil", "Russian Federation", "China", "Netherlands",
+             "Germany", "Korea, Republic of", "Viet Nam", "India", "Iran, Islamic Republic of", "Ukraine", "France"]
 # IPS: (assinatura, severidade, ação, entrada?)
 ATTACKS = [("MS.SMB.Server.SMB1.Trans2.Secondary.Handling.Code.Execution", "critical", "dropped", False),
            ("Apache.Log4j.Error.Log.Remote.Code.Execution", "critical", "dropped", True),
@@ -82,6 +84,8 @@ class DemoFazClient:
             "policytype": "policy",
             **_device(src),
         }
+        base["srccountry"] = "Reserved"
+        base["dstcountry"] = rnd.choice(COUNTRIES)
         if logtype == "webfilter":
             host, cat, action, ev = rnd.choice(SITES)
             base.update({"hostname": host, "url": "/" + rnd.choice(["", "login", "videos", "download.php"]),
@@ -103,7 +107,8 @@ class DemoFazClient:
             attack, sev, action, inbound = rnd.choice(ATTACKS)
             ext = f"185.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}.{rnd.randint(1, 250)}"
             if inbound:
-                base.update({"srcip": ext, "dstip": base["srcip"], "user": ""})
+                base.update({"srcip": ext, "dstip": base["srcip"], "user": "", "srccountry": base["dstcountry"],
+                             "dstcountry": "Reserved"})
                 for k in ("srcname", "srcmac", "osname", "devtype", "srchwvendor"):
                     base.pop(k, None)
             else:
@@ -155,6 +160,28 @@ class DemoFazClient:
             if ok == (op == "!="):
                 return False
         return True
+
+    def fortiview(self, adom, view, start, end, devices=None, limit=50, sort_by=None):
+        """FortiView top-threats no formato da API (campos de uma captura real de 7.6)."""
+        if view != "top-threats":
+            return []
+        rnd = random.Random(f"fv{start[:13]}{end[:13]}")
+        rows = []
+        items = [(a, "ips", "attack", 4 if s == "critical" else 3 if s == "high" else 2) for a, s, _x, _y in ATTACKS]
+        items += [(v, "malware-detected", "virus", 4) for v, _a, _f in VIRUSES]
+        items += [("malware-test.example", "Malicious Websites", "webfilter", 4), ("login-banco.phish.example", "Phishing", "webfilter", 4),
+                  ("Emotet.Botnet", "Botnet", "app-ctrl", 5), ("blocked-connection", "blocked-connection", "traffic", 2)]
+        for threat, ttype, lt, level in items:
+            inc = rnd.randint(5, 900)
+            blk = inc if rnd.random() < 0.6 else rnd.randint(0, inc)
+            w = inc * {5: 50, 4: 30, 3: 10, 2: 5}[level]
+            rows.append({"threat": threat, "threattype": ttype, "logtype_str": lt, "threatlevel": str(level),
+                         "level_s": {5: "Critical", 4: "High", 3: "Medium", 2: "Low"}[level], "threatweight": str(w),
+                         "threat_block": str(w * blk // inc), "threat_pass": str(w - w * blk // inc), "incidents": str(inc),
+                         "incident_block": str(blk), "incident_pass": str(inc - blk),
+                         "cve_list": "CVE-2021-44228" if "Log4j" in threat else ""})
+        rows.sort(key=lambda r: int(r["threatweight"]), reverse=True)
+        return rows[:limit]
 
     def list_alerts(self, adom, start, end, limit=2000):
         """Alertas do Event Monitor no formato da API (handlers padrão de IOC e botnet, mais outros)."""

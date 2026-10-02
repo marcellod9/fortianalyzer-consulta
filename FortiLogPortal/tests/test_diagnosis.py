@@ -80,4 +80,5 @@ def test_search_by_machine_name(client):
     d = client.post("/api/faz/diagnose", json={**PJ, "quem": "NB-ADM", "quem_tipo": "srcname"}, headers=H).json()
     assert d["rows"] and all(r["maquina"].startswith("NB-ADM") for r in d["rows"])
     assert all(m.startswith("NB-ADM") for m in d["origem"]["maquinas"])
-    assert d["maquina"]["nome"] == d["origem"]["maquinas"][0]
+    # a máquina consultada no Vision One é a do IP mais visto (máquina e IP vêm dos mesmos eventos)
+    assert any(r["maquina"] == d["maquina"]["nome"] and r["ip_origem"] == d["maquina"]["ip"] for r in d["rows"])

@@ -5,6 +5,9 @@ Duas fontes oficiais da API JSON-RPC:
   IOC e de botnet do FortiAnalyzer viram alertas dos handlers padrão (ex.: Compromised Host Detection
   IOC By Threat, Botnet Communication Detection); a API de IOC (/ioc/...) não lista essa tabela.
   O administrador REST precisa de "Event Management" somente leitura no perfil.
+- Top Threats: FortiView top-threats (add/get /fortiview/adom/{adom}/top-threats/run), a mesma tabela
+  de FortiView > Threats > Top Threats, com nível, pontuação e incidentes bloqueados/permitidos.
+- Mapa de ameaças: país do lado externo de cada evento de ameaça dos logs (srccountry/dstcountry).
 - Ranking de ameaças: a mesma busca de logs da aba Logs (logview/logsearch) em IPS, antivírus,
   sites maliciosos e phishing do filtro web, botnet do controle de aplicações e domínios maliciosos do DNS.
 """
@@ -25,6 +28,7 @@ from .logsearch import run_query
 
 CACHE_TTL = 300
 ROWS_PER_SOURCE = 2000   # eventos lidos por fonte (os mais recentes do período)
+TOP_THREATS = 50         # linhas do FortiView Top Threats
 ALERTS_MAX = 4000        # alertas do Event Monitor lidos no período
 TOP = 10
 
@@ -100,7 +104,85 @@ def threat_row(row: dict, source: str) -> dict:
         "destino": row.get("destino") or "", "firewall": row.get("firewall") or "",
         "arquivo": str(log.get("filename") or "")[:200], "url": row.get("url") or "",
         "referencia": str(log.get("ref") or "")[:300],
+        # lado externo: de onde veio o ataque (IPS de entrada) ou para onde a máquina foi (site, botnet, download)
+        "pais": _country(log.get("srccountry") if inbound else log.get("dstcountry")),
     }
+
+
+NO_COUNTRY = {"", "reserved", "n/a", "na", "unknown", "private"}
+
+
+def _country(v) -> str:
+    v = str(v or "").strip()
+    return "" if v.lower() in NO_COUNTRY else v
+
+
+# nomes do FortiOS (GeoIP) -> nomes do mapa (Natural Earth / world-atlas); os demais coincidem
+MAP_NAMES = {
+    "United States": "United States of America", "Russian Federation": "Russia", "Korea, Republic of": "South Korea",
+    "Korea, Democratic People's Republic of": "North Korea", "Iran, Islamic Republic of": "Iran", "Viet Nam": "Vietnam",
+    "Taiwan, Province of China": "Taiwan", "Czech Republic": "Czechia", "Moldova, Republic of": "Moldova",
+    "Syrian Arab Republic": "Syria", "Lao People's Democratic Republic": "Laos", "Tanzania, United Republic of": "Tanzania",
+    "Bolivia, Plurinational State of": "Bolivia", "Venezuela, Bolivarian Republic of": "Venezuela",
+    "Congo, The Democratic Republic of the": "Dem. Rep. Congo", "Macedonia, the Former Yugoslav Republic of": "Macedonia",
+    "North Macedonia": "Macedonia", "Bosnia and Herzegovina": "Bosnia and Herz.", "Dominican Republic": "Dominican Rep.",
+    "Central African Republic": "Central African Rep.", "Cote D'Ivoire": "Côte d'Ivoire", "Cote d'Ivoire": "Côte d'Ivoire",
+    "South Sudan": "S. Sudan", "Brunei Darussalam": "Brunei", "Libyan Arab Jamahiriya": "Libya",
+    "Palestinian Territory": "Palestine", "Palestine, State of": "Palestine", "Equatorial Guinea": "Eq. Guinea",
+    "Solomon Islands": "Solomon Is.", "Falkland Islands (Malvinas)": "Falkland Is.", "Western Sahara": "W. Sahara",
+    "Swaziland": "eSwatini", "Eswatini": "eSwatini", "Turkiye": "Turkey", "Türkiye": "Turkey",
+}
+
+
+def _countries(rows: list[dict]) -> dict:
+    by: dict[str, dict] = {}
+    sem = 0
+    for r in rows:
+        c = r["pais"]
+        if not c:
+            sem += 1
+            continue
+        x = by.setdefault(c, {"pais": c, "mapa": MAP_NAMES.get(c, c), "eventos": 0, "bloqueados": 0, "ameacas": Counter(),
+                              "maquinas": set()})
+        x["eventos"] += 1
+        x["bloqueados"] += r["bloqueado"]
+        x["ameacas"][r["ameaca"]] += 1
+        if r["afetado_ip"]:
+            x["maquinas"].add(r["afetado_ip"])
+    out = []
+    for x in by.values():
+        x["nao_bloqueados"] = x["eventos"] - x["bloqueados"]
+        x["principais"] = [a for a, _ in x["ameacas"].most_common(3)]
+        x["maquinas"] = len(x["maquinas"])
+        del x["ameacas"]
+        out.append(x)
+    out.sort(key=lambda x: -x["eventos"])
+    return {"paises": out, "sem_pais": sem}
+
+
+def _int(v) -> int:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return 0
+
+
+LEVELS = {"5": "critical", "4": "high", "3": "medium", "2": "low", "1": "info"}
+
+
+def top_threats(q: "ThreatQuery") -> dict:
+    """FortiView > Threats > Top Threats, ordenado pela pontuação (threatweight)."""
+    data = get_client().fortiview(q.adom, "top-threats", q.faz_time("start"), q.faz_time("end"),
+                                  devices=q.devices, limit=TOP_THREATS, sort_by="threatweight")
+    out = []
+    for r in data:
+        level = str(r.get("level_s") or "").lower() or LEVELS.get(str(r.get("threatlevel") or ""), "")
+        out.append({"ameaca": str(r.get("threat") or "-")[:200], "categoria": str(r.get("threattype") or ""),
+                    "tipo_log": str(r.get("logtype_str") or ""), "severidade": level if level in SEVERITY_ORDER else "",
+                    "pontuacao": _int(r.get("threatweight")), "pontuacao_bloqueada": _int(r.get("threat_block")),
+                    "incidentes": _int(r.get("incidents")), "bloqueados": _int(r.get("incident_block")),
+                    "permitidos": _int(r.get("incident_pass")), "cve": str(r.get("cve_list") or "")})
+    return {"linhas": out}
 
 
 def _ranking(rows: list[dict], top: int) -> dict:
@@ -304,6 +386,13 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
             msg = ("O administrador REST não tem acesso ao Event Monitor. No FortiAnalyzer, no perfil do admin REST, "
                    "deixe Event Management como Read-Only.")
         comprometidas = {"maquinas": [], "alertas": 0, "erro": msg}
+    try:
+        top = top_threats(q)
+    except FazError as e:
+        msg = str(e)
+        if "sem permissão" in msg:
+            msg = "O administrador REST não tem acesso ao FortiView. No perfil do admin REST, deixe FortiView como Read-Only."
+        top = {"linhas": [], "erro": msg}
     if len(erros) == len(SOURCES) and comprometidas.get("erro"):
         raise FazError("Não foi possível consultar o FortiAnalyzer: " + next(iter(erros.values())))
     rows.sort(key=lambda r: r["data_hora"], reverse=True)
@@ -317,6 +406,8 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
                    "usuarios": len({r["usuario"] for r in rows if r["usuario"]}),
                    "comprometidas": len(comprometidas["maquinas"])},
         "comprometidas": comprometidas,
+        "top_threats": top,
+        "mapa": _countries(rows),
         "ameacas": _ranking(rows, q.top),
         "maquinas": _hosts(rows),
         "graficos": _charts(rows, q.top),
@@ -324,7 +415,7 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
         "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "cache": False,
     }
-    if not erros and not comprometidas.get("erro"):
+    if not erros and not comprometidas.get("erro") and not top.get("erro"):
         database.cache_set(key, out, ttl=CACHE_TTL)
     return out
 
@@ -340,4 +431,5 @@ def _search(lq: LogQuery, expr: str) -> dict:
 
 EVENT_COLUMNS = [("data_hora", "Data/hora"), ("tipo", "Tipo"), ("ameaca", "Ameaça"), ("severidade", "Severidade"),
                  ("acao", "Ação"), ("usuario", "Usuário"), ("ip_origem", "IP de origem"), ("maquina", "Máquina"),
-                 ("ip_destino", "IP de destino"), ("destino", "Destino"), ("arquivo", "Arquivo"), ("firewall", "Firewall")]
+                 ("ip_destino", "IP de destino"), ("destino", "Destino"), ("pais", "País"), ("arquivo", "Arquivo"),
+                 ("firewall", "Firewall")]

@@ -12,6 +12,8 @@ URLs usadas:
   get    /logview/adom/{adom}/logsearch/{tid}      lê a página até percentage = 100 (uma página por tarefa)
   delete /logview/adom/{adom}/logsearch/{tid}      libera a tarefa no FAZ
   get    /eventmgmt/adom/{adom}/alerts             alertas do Event Monitor (perfil: Event Management)
+  add    /fortiview/adom/{adom}/{view}/run         FortiView (ex.: top-threats) -> tid
+  get    /fortiview/adom/{adom}/{view}/run/{tid}   lê o resultado até percentage = 100
 """
 import itertools
 import threading
@@ -162,6 +164,37 @@ class FazClient:
                 if len(page) < size:
                     break
         return {"alerts": alerts[:limit], "mais": len(alerts) >= limit}
+
+    # ---- FortiView ---------------------------------------------------------------
+    def fortiview(self, adom: str, view: str, start: str, end: str, devices: list[str] | None = None,
+                  limit: int = 50, sort_by: str | None = None) -> list[dict]:
+        """Mesma consulta das telas FortiView do FAZ (ex.: Threats > Top Threats)."""
+        base = f"/fortiview/adom/{adom}/{view}/run"
+        device = [{"devid": d} for d in devices] if devices else [{"devname": "All_Device"}]
+        params = {"apiver": 3, "device": device, "limit": limit, "offset": 0, "case-sensitive": False,
+                  "time-range": {"start": start, "end": end}}
+        if sort_by:
+            params["sort-by"] = [{"field": sort_by, "order": "desc"}]
+        with timed(self.source, f"fortiview {view}"):
+            created = self.call("add", base, **params) or {}
+            tid = created.get("tid") if isinstance(created, dict) else None
+            if tid is None:
+                raise FazError(f"FortiView {view}: o FortiAnalyzer não devolveu tid ({created})")
+            deadline = time.monotonic() + settings.faz_search_timeout
+            time.sleep(0.5)
+            while True:
+                res = self.call("get", f"{base}/{tid}", apiver=3) or {}
+                pct = res.get("percentage") if isinstance(res, dict) else None
+                try:
+                    done = pct is None or float(pct) >= 100
+                except (TypeError, ValueError):
+                    done = True
+                if done:
+                    data = res.get("data") if isinstance(res, dict) else res
+                    return [r for r in (data or []) if isinstance(r, dict)]
+                if time.monotonic() > deadline:
+                    raise FazError(f"FortiView {view}: tempo limite excedido; reduza o período.")
+                time.sleep(1)
 
     def _search_page(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
                      devices: list[str] | None, offset: int, limit: int) -> tuple[list, int | None]:

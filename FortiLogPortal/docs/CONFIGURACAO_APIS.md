@@ -29,17 +29,24 @@ controle de aplicações (botnet) e DNS, e também:
 
 | URL | Uso |
 |---|---|
+| `add /fortiview/adom/{adom}/top-threats/run` (apiver 3, `device`, `time-range`, `sort-by` threatweight) | Top Threats, a mesma lista de *FortiView > Threats > Top Threats* -> `tid` |
+| `get /fortiview/adom/{adom}/top-threats/run/{tid}` | lê até `percentage = 100`: `threat`, `threattype`, `level_s`, `threatweight`, `incidents`, `incident_block`, `incident_pass`, `cve_list` |
 | `get /eventmgmt/adom/{adom}/alerts` (apiver 3, `time-range`, `limit`, `offset`) | alertas do Event Monitor. A aba mostra os dos handlers de IOC e botnet (ex.: *Compromised Host Detection IOC By Threat*, *Botnet Communication Detection*), agrupados por máquina |
 
 A tabela *FortiView > Threats > Indicator of Compromise* não tem consulta na API de IOC (`/ioc/...` só tem
 licença, nova varredura e ACK). As mesmas detecções chegam como alertas do Event Monitor, desde que os
 handlers padrão de IOC estejam habilitados (*Incidents & Events > Handlers*). Essa leitura exige
-**Event Management: Read-Only** no perfil. Sem essa permissão, a aba mostra o aviso e continua com o ranking dos logs.
+**Event Management: Read-Only** no perfil, e o Top Threats exige **FortiView: Read-Only**. Sem uma delas, a parte
+correspondente mostra o aviso e o resto da aba continua funcionando.
+
+O **Mapa de ameaças** usa os campos `srccountry`/`dstcountry` dos próprios logs de ameaça (o país do lado externo:
+a origem num ataque de entrada do IPS, o destino nos demais). O desenho do mapa é local
+(`frontend/static/vendor/worldmap`, Natural Earth via world-atlas, licença ISC), sem acesso à internet.
 
 ### Criar o acesso (no FortiAnalyzer)
 
 1. **System Settings > Admin > Profiles**: crie um perfil **somente leitura** com *Log View*
-   (Read-Only), *Device Manager* (Read-Only) e, para a aba Ameaças, *Event Management* (Read-Only).
+   (Read-Only), *Device Manager* (Read-Only) e, para a aba Ameaças, *Event Management* e *FortiView* (Read-Only).
    Os demais itens em *None*.
 2. **System Settings > Admin > Administrators > Create New**:
    - *Admin Type*: **REST API Admin**;

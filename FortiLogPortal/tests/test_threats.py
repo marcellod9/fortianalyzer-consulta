@@ -82,3 +82,47 @@ def test_missing_event_permission_keeps_the_log_ranking(monkeypatch):
     q = threats.ThreatQuery(start=NOW - timedelta(hours=4), end=NOW)
     d = threats.run(q, use_cache=False)
     assert "Event Management" in d["comprometidas"]["erro"] and d["ameacas"]["linhas"]
+
+
+def test_fortiview_top_threats_uses_official_path_and_polls():
+    calls = []
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        calls.append((body["method"], p["url"]))
+        if body["method"] == "add":
+            assert p["url"] == "/fortiview/adom/root/top-threats/run" and p["device"] == [{"devname": "All_Device"}]
+            assert p["sort-by"] == [{"field": "threatweight", "order": "desc"}]
+            return FakeResp(200, {"result": {"tid": 7}})
+        done = len(calls) > 2
+        return FakeResp(200, {"result": {"percentage": 100 if done else 40, "data": [{"threat": "x"}] if done else []}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    rows = c.fortiview("root", "top-threats", "2026-10-01 00:00:00", "2026-10-02 00:00:00", sort_by="threatweight")
+    assert rows == [{"threat": "x"}] and calls[-1] == ("get", "/fortiview/adom/root/top-threats/run/7")
+
+
+def test_top_threats_rows_and_country_map(monkeypatch):
+    q = threats.ThreatQuery(start=NOW - timedelta(hours=4), end=NOW)
+    d = threats.run(q, use_cache=False)
+    t = d["top_threats"]["linhas"][0]
+    assert {"ameaca", "categoria", "pontuacao", "incidentes", "bloqueados", "permitidos"} <= set(t)
+    assert t["pontuacao"] >= d["top_threats"]["linhas"][-1]["pontuacao"]
+    paises = {c["pais"]: c for c in d["mapa"]["paises"]}
+    assert "Reserved" not in paises
+    if "United States" in paises:
+        assert paises["United States"]["mapa"] == "United States of America"
+
+
+def test_inbound_attack_country_is_the_source():
+    row = {"data_hora": "", "bloqueado": True, "usuario": "", "ip_origem": "1.2.3.4", "ip_destino": "10.0.0.1",
+           "log_original": {"direction": "incoming", "srccountry": "China", "dstcountry": "Reserved"}}
+    assert threats.threat_row(row, "ips")["pais"] == "China"
+    row["log_original"] = {"dstcountry": "Russian Federation"}
+    assert threats.threat_row(row, "malicioso")["pais"] == "Russian Federation"
+
+
+def test_world_map_names_cover_the_aliases():
+    import json
+    from app.config import BASE_DIR
+    names = {p["n"] for p in json.loads((BASE_DIR / "frontend/static/vendor/worldmap/world-110m.json").read_text())["paises"]}
+    assert set(threats.MAP_NAMES.values()) <= names
