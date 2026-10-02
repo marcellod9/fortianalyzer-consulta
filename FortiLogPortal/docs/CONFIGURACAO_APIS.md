@@ -48,7 +48,8 @@ ambiente atual é 7.4.7).
 | `FAZ_VERIFY_TLS` | `true` | `true`, `false` ou caminho do `.pem` da CA interna |
 | `FAZ_DEFAULT_ADOM` | `root` | ADOM selecionada por padrão |
 | `FAZ_MAX_RESULTS` | `1000` | máximo de linhas por consulta |
-| `REPORT_MAX_ROWS` | `5000` | Relatórios: eventos lidos por tipo de log para os gráficos (os mais recentes do período; o total vem do FAZ) |
+| `REPORT_MAX_ROWS` | `5000` | Relatório geral: eventos lidos por tipo de log para os gráficos (os mais recentes do período; o total vem do FAZ) |
+| `REPORT_MAX_ROWS_FILTRADO` | `20000` | Relatório por usuário, IP, site ou aplicação: eventos lidos para a tabela detalhada e os gráficos |
 | `FAZ_SEARCH_TIMEOUT` | `120` | segundos até desistir de uma busca |
 
 Se o certificado do FAZ for emitido pela CA interna, exporte a CA em Base64 (`.pem`/`.cer`),

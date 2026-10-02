@@ -45,6 +45,10 @@ o usuário do Windows que iniciou o servidor.
    alguém da equipe. Confira os totais com o FortiAnalyzer (Log View, mesmo período e filtro) e
    baixe o PDF e o Excel. Se aparecer o aviso de amostra, o período tem mais eventos do que
    `REPORT_MAX_ROWS` (padrão 5000 por tipo de log): os gráficos usam os mais recentes.
+   Teste também *Por site* (`facebook.com`, últimos 7 dias, um firewall): a tabela *Usuários que
+   acessaram* deve trazer todos os usuários vistos no Log View com o mesmo filtro. Quando o período
+   tem mais eventos que `REPORT_MAX_ROWS_FILTRADO` (20000), o portal faz até 3 buscas extras
+   excluindo os usuários já vistos para completar a lista, e avisa se ela ficou completa.
 8. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
 9. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
 10. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.

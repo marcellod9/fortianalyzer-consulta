@@ -140,6 +140,62 @@ FLP.reports = (() => {
       ${sub ? `<div class="small text-body-secondary">${sub}</div>` : ""}</div></div></div>`;
   }
 
+  // Tabela completa: quem acessou (ou, no relatório de um usuário, o que ele acessou), com busca e ordenação
+  const fmtDate = (v) => (v ? `${v.slice(8, 10)}/${v.slice(5, 7)} ${v.slice(11, 16)}` : "");
+  function detailHtml(det) {
+    if (!det || !det.linhas.length) return "";
+    const isUser = det.agrupamento === "usuario";
+    let note = isUser ? `${num(det.usuarios)} usuário(s)${det.sem_login ? ` e ${num(det.sem_login)} IP(s) sem login, no fim da lista` : ""}`
+      : `${num(det.total)} destino(s)`;
+    if (det.total > det.linhas.length) note += `, mostrando os ${num(det.linhas.length)} com mais acessos`;
+    note += ".";
+    if (det.parciais) note += " * Encontrado numa busca extra: a contagem desse usuário é parcial.";
+    if (!det.completo) note += ` <span class="text-warning-emphasis">A lista pode não estar completa (veja o aviso acima).</span>`;
+    return `<div class="card mb-3"><div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1"><h6 class="mb-0 flex-grow-1"><i class="bi ${isUser ? "bi-people" : "bi-globe2"}"></i> ${esc(det.titulo)}</h6>
+        <input type="search" class="form-control form-control-sm no-print" id="detSearch" style="max-width:16rem" placeholder="Filtrar a lista"></div>
+      <div class="small text-body-secondary mb-2">${note}</div>
+      <div class="table-responsive rep-detail"><table class="table table-sm table-hover small mb-0" id="detTable">
+        <thead><tr>${det.colunas.map(([k, l]) => `<th class="text-nowrap ${["acessos", "permitidos", "bloqueados"].includes(k) ? "text-end" : ""}" data-sort="${k}" role="button" title="Ordenar">${esc(l)} <i class="bi bi-arrow-down-up small text-body-tertiary no-print"></i></th>`).join("")}</tr></thead>
+        <tbody></tbody></table></div></div></div>`;
+  }
+  function detailBind(det) {
+    const table = document.getElementById("detTable");
+    if (!table) return;
+    let key = "acessos", dir = -1, filter = "";
+    const cell = (line, k) => {
+      const v = line[k] ?? "";
+      if (k === "primeiro" || k === "ultimo") return esc(fmtDate(v));
+      if (typeof v === "number") return `${num(v)}${k === "acessos" && line.parcial ? "*" : ""}`;
+      if (k === "usuario" && !v.startsWith("(sem login)")) {
+        return `<a href="/relatorios?tipo=usuario&valor=${encodeURIComponent(v)}" title="Relatório deste usuário">${esc(v)}</a>`;
+      }
+      if (k === "destino" && line.tipo === "Site") {
+        return `<a href="/relatorios?tipo=site&valor=${encodeURIComponent(v)}" title="Relatório deste site">${esc(v)}</a>`;
+      }
+      return esc(v);
+    };
+    const draw = () => {
+      const f = filter.toLowerCase();
+      const lines = det.linhas.filter((l) => !f || det.colunas.some(([k]) => String(l[k] ?? "").toLowerCase().includes(f)))
+        .sort((a, b) => {
+          const nl = (l) => String(l.usuario || "").startsWith("(sem login)");
+          if (nl(a) !== nl(b)) return nl(a) ? 1 : -1;  // sem login sempre no fim
+          return (typeof a[key] === "number" ? a[key] - b[key] : String(a[key]).localeCompare(String(b[key]), "pt-BR")) * dir;
+        });
+      table.querySelector("tbody").innerHTML = lines.map((l) => `<tr>${det.colunas.map(([k]) =>
+        `<td class="${["acessos", "permitidos", "bloqueados"].includes(k) ? "text-end" : ""} ${k === "bloqueados" && l[k] ? "text-danger" : ""}">${cell(l, k)}</td>`).join("")}</tr>`).join("")
+        || `<tr><td colspan="${det.colunas.length}" class="text-body-secondary">Nada encontrado com "${esc(filter)}".</td></tr>`;
+    };
+    table.querySelectorAll("[data-sort]").forEach((th) => th.addEventListener("click", () => {
+      dir = key === th.dataset.sort ? -dir : (["acessos", "permitidos", "bloqueados", "primeiro", "ultimo"].includes(th.dataset.sort) ? -1 : 1);
+      key = th.dataset.sort;
+      draw();
+    }));
+    document.getElementById("detSearch").addEventListener("input", (ev) => { filter = ev.target.value.trim(); draw(); });
+    draw();
+  }
+
   function render(rep) {
     last = rep;
     const box = document.getElementById("report"), r = rep.resumo;
@@ -149,7 +205,7 @@ FLP.reports = (() => {
     box.innerHTML = `
       <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
         <h5 class="mb-0">${esc(rep.titulo)}</h5>
-        <span class="small text-body-secondary">${esc(rep.periodo.inicio)} a ${esc(rep.periodo.fim)} · gerado em ${esc(rep.gerado_em.slice(0, 16))}${rep.cache ? " (cache)" : ""}</span>
+        <span class="small text-body-secondary">${esc(rep.periodo.inicio)} a ${esc(rep.periodo.fim)} · firewall: ${esc(rep.firewall || "Todos")} · gerado em ${esc(rep.gerado_em.slice(0, 16))}${rep.cache ? " (cache)" : ""}</span>
       </div>
       <div class="small text-body-secondary mb-2"><i class="bi bi-database"></i> ${fontes}</div>
       ${rep.aviso_amostra ? `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-info-circle"></i> ${esc(rep.aviso_amostra)}</div>` : ""}
@@ -161,9 +217,12 @@ FLP.reports = (() => {
         ${rep.tipo !== "aplicacao" ? kpi("Sites", num(r.sites), "bi-globe2") : ""}
         ${rep.tipo !== "site" ? kpi("Aplicações", num(r.aplicacoes), "bi-app-indicator") : ""}
       </div>
+      ${rep.tipo !== "geral" ? detailHtml(rep.detalhe) : ""}
       ${rep.graficos.length ? `<div class="row g-3">${rep.graficos.map(card).join("")}</div>`
         : `<div class="alert alert-secondary">Nenhum evento no período para os filtros escolhidos. Aumente o período, confira o filtro
-            ou escolha outro firewall.</div>`}`;
+            ou escolha outro firewall.</div>`}
+      ${rep.tipo === "geral" ? `<div class="mt-3">${detailHtml(rep.detalhe)}</div>` : ""}`;
+    detailBind(rep.detalhe);
     box.querySelectorAll("[data-table]").forEach((b) => b.addEventListener("click", () => {
       const t = document.getElementById(`rt${b.dataset.table}`);
       t.classList.toggle("d-none");

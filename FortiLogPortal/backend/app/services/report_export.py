@@ -31,7 +31,7 @@ def time_label(key: str, group: str) -> str:
 
 def _meta(rep: dict) -> list[tuple[str, str]]:
     r = rep["resumo"]
-    out = [("Período", f"{rep['periodo']['inicio']} a {rep['periodo']['fim']}"),
+    out = [("Período", f"{rep['periodo']['inicio']} a {rep['periodo']['fim']}"), ("Firewall", rep.get("firewall") or "Todos"),
            ("Eventos no FortiAnalyzer", _num(r["eventos"])), ("Eventos analisados", _num(r["lidos"])),
            ("Permitidos", _num(r["permitidos"])), ("Bloqueados", _num(r["bloqueados"])),
            ("Usuários", _num(r["usuarios"])), ("IPs de origem", _num(r["ips"])),
@@ -55,6 +55,37 @@ def _headers(chart: dict) -> list[str]:
     if chart["tipo"] == "line":
         return ["Horário" if chart["agrupamento"] == "hora" else "Dia", "Permitidos", "Bloqueados"]
     return [chart["coluna"], "Registros", "%"]
+
+
+def detail_rows(det: dict) -> list[list[str]]:
+    """Linhas da tabela detalhada (usuários ou destinos); * marca contagem parcial (busca extra)."""
+    out = []
+    for line in det["linhas"]:
+        row = []
+        for k, _ in det["colunas"]:
+            v = line.get(k, "")
+            if k in ("primeiro", "ultimo"):
+                v = f"{v[8:10]}/{v[5:7]}/{v[:4]} {v[11:16]}" if v else ""
+            elif isinstance(v, int):
+                v = _num(v) + ("*" if k == "acessos" and line.get("parcial") else "")
+            row.append(str(v))
+        out.append(row)
+    return out
+
+
+def detail_note(det: dict) -> str:
+    if det["agrupamento"] == "destino":
+        n = f"{_num(det['total'])} destinos."
+    else:
+        n = f"{_num(det['usuarios'])} usuário(s)"
+        n += f" e {_num(det['sem_login'])} IP(s) sem login (no fim da lista)." if det["sem_login"] else "."
+    if det["total"] > len(det["linhas"]):
+        n += f" Mostrando os {_num(len(det['linhas']))} com mais acessos."
+    if det["parciais"]:
+        n += " * Encontrado numa busca extra: a contagem desse usuário é parcial."
+    if not det["completo"]:
+        n += " A lista pode não estar completa (veja o aviso acima)."
+    return n
 
 
 def _colors(chart: dict) -> list[str]:
@@ -81,7 +112,7 @@ def to_pdf(rep: dict) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import KeepTogether, LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     from xml.sax.saxutils import escape
 
     hx = colors.HexColor
@@ -216,6 +247,27 @@ def to_pdf(rep: dict) -> bytes:
     story += [t, Spacer(1, 2 * mm)]
     for n in _notes(rep):
         story.append(Paragraph(escape(n), ParagraphStyle("note", parent=small, textColor=hx("#8a5a00"))))
+    def detail_block():
+        det = rep.get("detalhe")
+        if not det or not det["linhas"]:
+            return []
+        dcell = ParagraphStyle("dcell", parent=cell, fontSize=6.5, leading=8)
+        dhead = ParagraphStyle("dhead", parent=dcell, textColor=colors.white, fontName="Helvetica-Bold")
+        weights = {"usuario": 2.2, "destino": 2.4, "ips": 1.8, "maquinas": 1.6, "categoria": 1.5, "firewalls": 1.5,
+                   "primeiro": 1.3, "ultimo": 1.3, "tipo": 0.9, "acessos": 1.05, "permitidos": 1.15, "bloqueados": 1.15}
+        w = [weights.get(k, 0.9) for k, _ in det["colunas"]]
+        widths = [doc.width * x / sum(w) for x in w]
+        data = [[Paragraph(escape(label), dhead) for _, label in det["colunas"]]]
+        data += [[Paragraph(escape(v[:90]), dcell) for v in r] for r in detail_rows(det)]
+        t = LongTable(data, colWidths=widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), hx(HEAD)), ("GRID", (0, 0), (-1, -1), 0.25, hx("#BBBBBB")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, hx("#F2F6FA")]), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        return [Paragraph(escape(det["titulo"]), h2), Paragraph(escape(detail_note(det)), small), Spacer(1, 1 * mm), t]
+
+    if rep["tipo"] != "geral":  # quem acessou (ou o que o usuário acessou) vem logo depois do resumo
+        story += detail_block()
     for chart in rep["graficos"]:
         fonte = f"Base: {_num(chart['base'])} registros ({chart['fonte']})."
         if chart.get("sem_valor"):
@@ -233,6 +285,8 @@ def to_pdf(rep: dict) -> bytes:
             side.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
             block.append(side)
         story.append(KeepTogether(block))
+    if rep["tipo"] == "geral":
+        story += detail_block()
     if not rep["graficos"]:
         story.append(Paragraph("Nenhum evento no período para os filtros escolhidos.", st["Normal"]))
     doc.build(story)
@@ -264,7 +318,22 @@ def to_xlsx(rep: dict, columns: list[tuple[str, str]]) -> bytes:
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 40
 
-    used = {"Resumo", "Eventos"}
+    det = rep.get("detalhe")
+    if det and det["linhas"]:
+        sh = wb.create_sheet("Usuários" if det["agrupamento"] == "usuario" else "Destinos")
+        sh.append([det["titulo"]])
+        sh["A1"].font = Font(bold=True, size=12)
+        sh.append([detail_note(det)])
+        sh.append([label for _, label in det["colunas"]])
+        for c in sh[3]:
+            c.font, c.fill = Font(bold=True, color="FFFFFF"), head
+        for line in det["linhas"]:
+            sh.append([line.get(k) if isinstance(line.get(k), int) else _cell(line.get(k)) for k, _ in det["colunas"]])
+        sh.freeze_panes = "A4"
+        sh.auto_filter.ref = f"A3:{sh.cell(3, len(det['colunas'])).column_letter}{sh.max_row}"
+        for i, (k, label) in enumerate(det["colunas"], start=1):
+            sh.column_dimensions[sh.cell(3, i).column_letter].width = 30 if k in ("usuario", "destino", "ips", "maquinas") else max(12, len(label) + 3)
+    used = {"Resumo", "Eventos", "Usuários", "Destinos"}
     for chart in rep["graficos"]:
         name = re.sub(r"[\[\]:*?/\\]", "", chart["titulo"])[:31]
         while name in used:

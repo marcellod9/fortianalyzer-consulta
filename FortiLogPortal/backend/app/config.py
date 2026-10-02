@@ -52,6 +52,8 @@ class Settings:
     faz_parallel_searches: int = field(default_factory=lambda: _int("FAZ_PARALLEL_SEARCHES", 1))
     # Relatórios: eventos lidos por tipo de log para montar os gráficos (os mais recentes do período)
     report_max_rows: int = field(default_factory=lambda: max(100, min(_int("REPORT_MAX_ROWS", 5000), 50000)))
+    # relatório filtrado (usuário, IP, site, aplicação): lê mais, para a lista de usuários/destinos sair completa
+    report_max_rows_filtered: int = field(default_factory=lambda: max(100, min(_int("REPORT_MAX_ROWS_FILTRADO", 20000), 100000)))
 
     v1_base_url: str = field(default_factory=lambda: os.getenv("V1_BASE_URL", "https://api.xdr.trendmicro.com").rstrip("/"))
     v1_token: str = field(default_factory=lambda: os.getenv("V1_API_TOKEN", ""))
@@ -87,6 +89,7 @@ class Settings:
             "faz_default_adom": self.faz_default_adom,
             "faz_max_results": self.faz_max_results,
             "report_max_rows": self.report_max_rows,
+            "report_max_rows_filtered": self.report_max_rows_filtered,
             "v1_base_url": self.v1_base_url,
             "v1_token_definido": bool(self.v1_token),
             "v1_lookback_days": self.v1_lookback_days,

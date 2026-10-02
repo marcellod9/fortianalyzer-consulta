@@ -110,3 +110,6 @@ pre.raw { font-size: .75rem; max-height: 380px; overflow: auto; background: var(
   .rep-card { break-inside: avoid; }
   .rep-table { max-height: none; overflow: visible; }
 }
+.rep-detail { max-height: 520px; overflow: auto; }
+.rep-detail thead th { position: sticky; top: 0; background: var(--bs-body-bg); }
+@media print { .rep-detail { max-height: none; overflow: visible; } }

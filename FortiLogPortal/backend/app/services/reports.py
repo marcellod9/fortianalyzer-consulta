@@ -58,6 +58,14 @@ EVENT_COLUMNS = [("data_hora", "Data/hora"), ("tipo_log", "Tipo de log"), ("usua
                  ("maquina", "Máquina"), ("site", "Site"), ("aplicacao", "Aplicação"), ("categoria", "Categoria"),
                  ("situacao", "Situação"), ("firewall", "Firewall"), ("regra", "Regra")]
 CACHE_TTL = 300
+DETAIL_MAX = 3000          # linhas da tabela detalhada
+DISCOVERY_ROUNDS = 3       # buscas extras para completar a lista de usuários
+DISCOVERY_EXCLUDE = 150    # usuários já vistos excluídos por busca extra (o filtro do FAZ fica longo)
+DISCOVERY_LIMIT = 1000
+
+
+def _row_limit(q: "ReportQuery") -> int:
+    return settings.report_max_rows if q.tipo == "geral" else settings.report_max_rows_filtered
 
 
 class ReportQuery(BaseModel):
@@ -170,8 +178,116 @@ def build_charts(q: ReportQuery, rows: list[dict], since: str | None = None) -> 
     return out
 
 
+def _join(values: set, n: int = 3) -> str:
+    vals = sorted(v for v in values if v)
+    return ", ".join(vals[:n]) + (f" (+{len(vals) - n})" if len(vals) > n else "")
+
+
+def build_detail(q: ReportQuery, rows: list[dict], extra: list[dict], complete: bool) -> dict:
+    """Tabela completa: por usuário (quem acessou) ou, no relatório de um usuário, por destino (o que acessou).
+
+    extra: eventos das buscas que completam a lista de usuários; quem só aparece nelas fica com a contagem parcial.
+    """
+    by_dest = q.tipo == "usuario"
+    groups: dict = {}
+    seen_main = set()
+    for src, data in (("main", rows), ("extra", extra)):
+        for r in data:
+            if by_dest:
+                key = ("Site", r["site"] or r["ip_destino"]) if r["tipo_log"] == "webfilter" else ("Aplicação", r["aplicacao"])
+                if not key[1]:
+                    continue
+            else:
+                key = r["usuario"] or f"(sem login) {r['ip_origem']}"
+            if src == "main":
+                seen_main.add(key)
+            elif key in seen_main:
+                continue  # já contado nos eventos principais
+            g = groups.setdefault(key, {"acessos": 0, "bloqueados": 0, "ips": set(), "maquinas": set(), "firewalls": set(),
+                                        "categorias": set(), "usuarios": set(), "primeiro": r["data_hora"],
+                                        "ultimo": r["data_hora"], "parcial": src == "extra"})
+            g["acessos"] += 1
+            g["bloqueados"] += 1 if r["bloqueado"] else 0
+            g["ips"].add(r["ip_origem"]); g["maquinas"].add(r["maquina"]); g["firewalls"].add(r["firewall"])
+            g["categorias"].add(r["categoria"]); g["usuarios"].add(r["usuario"])
+            g["primeiro"] = min(g["primeiro"], r["data_hora"]); g["ultimo"] = max(g["ultimo"], r["data_hora"])
+    lines = []
+    # quem tem login primeiro; os eventos sem usuário (rede sem login, ex.: Wi-Fi de visitantes) vêm por IP, no fim
+    no_login = lambda key: isinstance(key, str) and key.startswith("(sem login)")  # noqa: E731
+    for key, g in sorted(groups.items(), key=lambda kv: (no_login(kv[0]), -kv[1]["acessos"], str(kv[0]))):
+        line = {"acessos": g["acessos"], "permitidos": g["acessos"] - g["bloqueados"], "bloqueados": g["bloqueados"],
+                "primeiro": g["primeiro"], "ultimo": g["ultimo"], "firewalls": _join(g["firewalls"]), "parcial": g["parcial"]}
+        if by_dest:
+            line.update(tipo=key[0], destino=key[1], categoria=_join(g["categorias"], 2), ips=_join(g["ips"]))
+        else:
+            line.update(usuario=key, ips=_join(g["ips"]), maquinas=_join(g["maquinas"]))
+        lines.append(line)
+    if by_dest:
+        cols = [("destino", "Site ou aplicação"), ("tipo", "Tipo"), ("categoria", "Categoria"), ("acessos", "Acessos"),
+                ("permitidos", "Permitidos"), ("bloqueados", "Bloqueados"), ("primeiro", "Primeiro acesso"),
+                ("ultimo", "Último acesso"), ("ips", "IP de origem"), ("firewalls", "Firewall")]
+        titulo = f"O que {q.valor} acessou"
+    else:
+        cols = [("usuario", "Usuário"), ("ips", "IP de origem"), ("maquinas", "Máquina"), ("acessos", "Acessos"),
+                ("permitidos", "Permitidos"), ("bloqueados", "Bloqueados"), ("primeiro", "Primeiro acesso"),
+                ("ultimo", "Último acesso"), ("firewalls", "Firewall")]
+        titulo = {"site": f"Usuários que acessaram {q.valor}", "aplicacao": f"Usuários que usaram {q.valor}",
+                  "ip": f"Usuários no IP {q.valor}"}.get(q.tipo, "Usuários")
+    if q.somente_bloqueios:
+        cols = [c for c in cols if c[0] not in ("permitidos", "bloqueados")]
+        titulo = titulo.replace("acessaram", "tiveram bloqueio em").replace("usaram", "tiveram bloqueio em")
+    sem_login = sum(1 for k in groups if no_login(k))
+    return {"titulo": titulo, "colunas": cols, "linhas": lines[:DETAIL_MAX], "total": len(lines),
+            "usuarios": len(groups) - sem_login, "sem_login": sem_login,
+            "completo": complete,
+            "parciais": sum(1 for x in lines if x["parcial"] and not no_login(x.get("usuario", ""))),
+            "agrupamento": "destino" if by_dest else "usuario"}
+
+
+def _discover_users(q: ReportQuery, lt: str, rows: list[dict]) -> tuple[list[dict], bool]:
+    """Completa a lista de usuários quando o período tem mais eventos do que o relatório lê.
+
+    Busca de novo excluindo os usuários já vistos (user!="..."): os que sobram aparecem nos eventos mais recentes
+    dessa busca. Para quando uma busca não traz ninguém novo ou já leu tudo o que sobrou.
+    """
+    known = {r["usuario"] for r in rows if r["usuario"]}
+    extra = []
+    for _ in range(DISCOVERY_ROUNDS):
+        if len(known) > DISCOVERY_EXCLUDE:
+            return extra, False
+        try:
+            excl = [LogFilter(field="user", op="!=", value=u) for u in sorted(known)]
+        except ValueError:
+            return extra, False
+        lq = q.base_query(lt)
+        lq.filters = lq.filters + excl
+        lq.limit = DISCOVERY_LIMIT
+        try:
+            res = run_query(lq, use_cache=False, save_cache=False, policy_names=False)
+        except FazError:
+            return extra, False
+        extra.extend(res["rows"])
+        new = {r["usuario"] for r in res["rows"] if r["usuario"]} - known
+        if res["total"] <= res["returned"]:
+            return extra, True  # leu tudo o que sobrou
+        if not new:
+            return extra, False  # o que sobra são eventos sem usuário (rede sem login)
+        known |= new
+    return extra, False
+
+
+def _firewall_names(q: ReportQuery) -> str:
+    if q.devname:
+        return q.devname
+    if not q.devices:
+        return "Todos"
+    devs = database.cache_get(f"faz:devices:{q.adom}") or []
+    names = {d.get("sn"): d.get("name") for d in devs if isinstance(d, dict)}
+    return ", ".join(names.get(sn) or sn for sn in q.devices)
+
+
 def _cache_key(q: ReportQuery) -> str:
-    raw = json.dumps(q.model_dump(mode="json"), sort_keys=True) + str(settings.report_max_rows)
+    raw = json.dumps(q.model_dump(mode="json"), sort_keys=True) + f"{settings.report_max_rows}:{settings.report_max_rows_filtered}"
     return "report:" + hashlib.sha1(raw.encode()).hexdigest()
 
 
@@ -180,10 +296,10 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
     if use_cache and (hit := database.cache_get(key)):
         hit["cache"] = True
         return hit
-    rows, fontes, erros, oldest = [], {}, {}, []
+    rows, fontes, erros, oldest, extra, complete = [], {}, {}, [], [], True
     for lt in KINDS[q.tipo][1]:
         lq = q.base_query(lt)
-        lq.limit = settings.report_max_rows  # acima do limite da aba Logs: o relatório só guarda as contagens
+        lq.limit = _row_limit(q)  # acima do limite da aba Logs: o relatório só guarda as contagens
         fontes[lt] = {"nome": LOGTYPE_NAMES[lt], "filtro": lq.filter_expr(), "total": 0, "lidos": 0}
         try:
             res = run_query(lq, use_cache=False, save_cache=False, policy_names=False)
@@ -193,6 +309,12 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         fontes[lt].update(total=max(res["total"], res["returned"]), lidos=res["returned"])
         if fontes[lt]["total"] > res["returned"] and res["rows"]:
             oldest.append(min(r["data_hora"] for r in res["rows"]))
+            if q.tipo != "usuario":  # quem acessou: completa a lista de usuários com buscas extras
+                more, done = _discover_users(q, lt, res["rows"])
+                extra.extend(more)
+                complete = complete and done
+            else:
+                complete = False
         rows.extend(res["rows"])
     if len(erros) == len(fontes):
         raise FazError("Não foi possível consultar o FortiAnalyzer: " + "; ".join(f"{LOGTYPE_NAMES[k]}: {v}" for k, v in erros.items()))
@@ -204,7 +326,8 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         "titulo": q.title(), "tipo": q.tipo, "tipo_nome": KINDS[q.tipo][0], "valor": q.valor,
         "periodo": {"inicio": q.start.strftime("%Y-%m-%d %H:%M"), "fim": q.end.strftime("%Y-%m-%d %H:%M")},
         "somente_bloqueios": q.somente_bloqueios,
-        "fontes": fontes, "erros": erros, "amostra": amostra, "limite_amostra": settings.report_max_rows,
+        "fontes": fontes, "erros": erros, "amostra": amostra, "limite_amostra": _row_limit(q),
+        "firewall": _firewall_names(q),
         "resumo": {
             "eventos": sum(f["total"] for f in fontes.values()),
             "lidos": len(rows), "bloqueados": bloqueados, "permitidos": len(rows) - bloqueados,
@@ -214,6 +337,7 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
             "aplicacoes": len({r["aplicacao"] for r in rows if r["aplicacao"] and r["tipo_log"] == "app-ctrl"}),
         },
         "graficos": build_charts(q, rows, max(oldest) if oldest else None),
+        "detalhe": build_detail(q, rows, extra, complete and not erros),
         "eventos": [{k: r.get(k, "") for k, _ in EVENT_COLUMNS} for r in rows],
         "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "cache": False,
@@ -222,9 +346,17 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         lidos = " e ".join(f"{f['lidos']:,} de {f['total']:,} no {f['nome']}".replace(",", ".")
                            for f in fontes.values() if f["total"] > f["lidos"])
         mais_antigo = max(oldest) if oldest else ""
-        out["aviso_amostra"] = (f"O período tem mais eventos do que o relatório lê: os gráficos usam os mais recentes "
-                                f"({lidos}), desde {mais_antigo}. Para o período inteiro, diminua o período ou "
-                                f"filtre por usuário, IP, site ou aplicação.")
+        out["aviso_amostra"] = (f"O período tem mais eventos do que o relatório lê: os gráficos e as contagens usam os "
+                                f"mais recentes ({lidos}), desde {mais_antigo}.")
+        d = out["detalhe"]
+        if q.tipo != "usuario" and d["completo"]:
+            out["aviso_amostra"] += (" A lista de usuários está completa: buscas extras trouxeram quem não apareceu "
+                                     "nesses eventos" + (f" ({d['parciais']} usuário(s), com contagem parcial)." if d["parciais"] else "."))
+        elif q.tipo != "usuario":
+            out["aviso_amostra"] += (" A lista de usuários pode não estar completa. Para ter certeza, diminua o período "
+                                     "(por exemplo, um dia por vez) ou escolha o firewall.")
+        else:
+            out["aviso_amostra"] += " Para o período inteiro, diminua o período ou escolha o firewall."
     if erros:
         out["aviso"] = ("Não foi possível consultar: " + ", ".join(LOGTYPE_NAMES[k] for k in erros) +
                         ". O relatório mostra só o restante.")
