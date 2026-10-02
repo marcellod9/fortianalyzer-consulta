@@ -29,6 +29,9 @@ FLP.threatsTrend = (() => {
     return `<span class="badge ${c}" title="${esc(r.situacao)}">${t}${days}</span>`;
   }
 
+  // só Windows e Linux podem ter agente Trend: o botão não aparece para AP, impressora, celular etc.
+  const checkable = (r) => /windows|linux/i.test(r.sistema || "");
+
   function rowHtml(r) {
     const user = [r.usuario, r.usuario_trend && r.usuario_trend !== r.usuario ? `Trend: ${r.usuario_trend}` : ""].filter(Boolean);
     return `<tr data-q="${esc([r.maquina, r.ip, r.mac, r.usuario, r.usuario_trend, r.sistema, r.rede, r.grupo].join(" ").toLowerCase())}">
@@ -40,8 +43,8 @@ FLP.threatsTrend = (() => {
       <td class="text-nowrap small">${esc(r.ultimo_contato || "-")}</td>
       <td class="text-nowrap small">${esc(String(r.visto || "").slice(0, 16) || "-")}</td>
       <td class="small text-break">${esc(r.grupo || "-")}${r.achado_por ? `<div class="text-body-secondary">pelo ${esc(r.achado_por)}</div>` : ""}</td>
-      <td><button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-check title="Procura a máquina no Vision One agora, pelo nome e pelo IP">
-        <i class="bi bi-search"></i> Conferir no V1</button></td>
+      <td>${checkable(r) ? `<button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-check title="Procura a máquina no Vision One agora, pelo nome e pelo IP">
+        <i class="bi bi-search"></i> Conferir no V1</button>` : ""}</td>
     </tr>`;
   }
 
