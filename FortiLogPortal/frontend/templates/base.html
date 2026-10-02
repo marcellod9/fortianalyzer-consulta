@@ -7,11 +7,12 @@
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v }}">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🛡️</text></svg>">
+  <link rel="icon" type="image/png" href="/static/img/marista-icone.png?v={{ asset_v }}">
 </head>
 <body data-sandbox="{{ 1 if sandbox_enabled else 0 }}">
 <aside class="flp-sidebar p-3 d-flex flex-column">
-  <a href="/" class="brand fs-5 mb-1 text-decoration-none"><i class="bi bi-shield-lock"></i> FortiLogPortal</a>
+  <a href="/" class="brand-logo mb-2" title="Início"><img src="/static/img/marista-brasil.png?v={{ asset_v }}" class="logo-light" alt="Marista Brasil"><img src="/static/img/marista-brasil-escuro.png?v={{ asset_v }}" class="logo-dark" alt="Marista Brasil"></a>
+  <a href="/" class="brand fs-6 mb-0 text-decoration-none"><i class="bi bi-shield-lock"></i> FortiLogPortal</a>
   <div class="small text-body-secondary mb-3">Consultas de segurança · Sustentação</div>
   <nav class="nav flex-column gap-1">
     {% for path, name, title, icon in pages %}

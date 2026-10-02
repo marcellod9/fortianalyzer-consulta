@@ -15,10 +15,10 @@ router = APIRouter()
 
 
 def _asset_version() -> str:
-    """Muda sempre que app.css/os .js mudam: o navegador não reaproveita arquivo antigo depois do update."""
+    """Muda sempre que app.css, os .js ou as imagens mudam: o navegador não reaproveita arquivo antigo depois do update."""
     h = hashlib.sha1()
     static = BASE_DIR / "frontend" / "static"
-    for f in sorted([*static.glob("css/*.css"), *static.glob("js/*.js")]):
+    for f in sorted([*static.glob("css/*.css"), *static.glob("js/*.js"), *static.glob("img/*.png")]):
         h.update(f.read_bytes())
     return h.hexdigest()[:10]
 

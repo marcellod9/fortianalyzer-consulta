@@ -6,12 +6,16 @@
   <title>{{ title }} · FortiLogPortal</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <link rel="icon" type="image/png" href="/static/img/marista-icone.png">
+  <style>.brand-logo img { width: 12rem; height: auto; } .logo-dark, [data-bs-theme="dark"] .logo-light { display: none; }
+    [data-bs-theme="dark"] .logo-dark { display: inline; }</style>
   <script>try { const t = localStorage.getItem("flp-theme"); if (t) document.documentElement.setAttribute("data-bs-theme", t); } catch {}</script>
 </head>
 <body class="bg-body-tertiary d-flex align-items-center justify-content-center" style="min-height:100vh">
   <div class="card shadow-sm" style="max-width:30rem;width:calc(100% - 2rem)">
     <div class="card-body p-4">
-      <div class="fs-5 mb-3"><i class="bi bi-shield-lock"></i> FortiLogPortal</div>
+      <div class="brand-logo mb-3"><img src="/static/img/marista-brasil.png" class="logo-light" alt="Marista Brasil"><img src="/static/img/marista-brasil-escuro.png" class="logo-dark" alt="Marista Brasil"></div>
+      <div class="fs-6 mb-3 text-body-secondary"><i class="bi bi-shield-lock"></i> FortiLogPortal</div>
       <h1 class="h5">{{ title }}</h1>
       <p class="text-body-secondary mb-4">{{ text }}</p>
       {% if login %}<a class="btn btn-primary" href="/auth/login"><i class="bi bi-microsoft"></i> Entrar com a conta Microsoft</a>{% endif %}
