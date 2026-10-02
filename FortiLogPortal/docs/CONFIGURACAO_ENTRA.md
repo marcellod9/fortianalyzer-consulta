@@ -27,6 +27,9 @@ Centro de administração do Microsoft Entra (entra.microsoft.com) > **Identidad
 - Tipos de conta: **Somente contas deste diretório organizacional** (locatário único)
 - URI de redirecionamento: plataforma **Web**, `http://localhost:8000/auth/callback`
 
+Depois, em **Autenticação** do aplicativo, acrescente na mesma plataforma **Web** a URI `http://localhost:8000/auth/saiu`
+(página mostrada depois de *Sair*) e salve. Se o registro foi criado sem URI, use **Adicionar uma plataforma > Web**.
+
 Quando o portal for para um servidor com HTTPS, acrescente a URI `https://<servidor>/auth/callback` e mude
 `ENTRA_REDIRECT_URI` no `config\.env`. O Entra só aceita `http` para `localhost`.
 
@@ -128,6 +131,7 @@ Logs, Reputação, Correlação e Histórico) ficam abertas a todos que consegue
 
 | Mensagem | O que fazer |
 |---|---|
+| AADSTS500113 (nenhum endereço de resposta registrado) | O aplicativo não tem URI de redirecionamento: em *Autenticação* > *Adicionar uma plataforma* > **Web**, cadastre `http://localhost:8000/auth/callback` |
 | AADSTS50011 (redirect URI não corresponde) | A URI no Entra (plataforma Web) precisa ser idêntica a `ENTRA_REDIRECT_URI` |
 | AADSTS50105 (usuário não atribuído) | Adicione a pessoa ou o grupo em *Usuários e grupos* (passo 5) |
 | AADSTS7000215 (segredo inválido) | O segredo expirou ou foi copiado o *ID do segredo*; copie o **Valor** |
