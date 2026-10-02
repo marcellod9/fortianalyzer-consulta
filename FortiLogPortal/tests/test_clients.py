@@ -165,3 +165,26 @@ def test_faz_reads_more_pages_when_faz_returns_fewer_rows(monkeypatch):
     assert res["returned"] == 250 and res["total"] == 250
     assert res["logs"] == all_rows
     assert offsets == [0, 100, 200, 250]
+
+
+def test_faz_never_asks_more_than_1000_rows_per_read(monkeypatch):
+    """O FAZ recusa limit > 1000 ("Invalid params: limit: 5000 is bigger than max value 1000")."""
+    monkeypatch.setattr("app.services.fortianalyzer.time.sleep", lambda s: None)
+    all_rows = [{"id": i} for i in range(2500)]
+    limits = []
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        if body["method"] == "add":
+            return FakeResp(body={"result": {"tid": 9}})
+        if body["method"] == "get":
+            limits.append(p["limit"])
+            if p["limit"] > 1000:
+                return FakeResp(body={"result": {"status": {"code": -32002, "message": f"Invalid params: limit: {p['limit']} is bigger than max value 1000."}}})
+            return FakeResp(body={"result": {"percentage": 100, "total-lines": 2500,
+                                             "data": all_rows[p["offset"]: p["offset"] + p["limit"]]}})
+        return FakeResp(body={"result": {}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    res = c.search_logs("root", "webfilter", "a", "b", limit=5000)
+    assert res["returned"] == 2500 and res["logs"] == all_rows
+    assert max(limits) == 1000

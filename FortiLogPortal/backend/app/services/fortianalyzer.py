@@ -27,6 +27,10 @@ class FazError(Exception):
     pass
 
 
+# Máximo de linhas por leitura do logsearch ("limit: N is bigger than max value 1000"); acima disso, lê em páginas
+PAGE_MAX = 1000
+
+
 class FazClient:
     source = "fortianalyzer"
 
@@ -127,7 +131,7 @@ class FazClient:
                 time.sleep(0.5)  # o FAZ pode demorar a registrar a tarefa recém-criada
                 while True:
                     try:
-                        res = self.call("get", f"{base}/{tid}", apiver=3, offset=0, limit=limit) or {}
+                        res = self.call("get", f"{base}/{tid}", apiver=3, offset=0, limit=min(limit, PAGE_MAX)) or {}
                     except FazError as e:
                         # "Invalid tid ... for fetching result" (-32005): tarefa ainda não disponível
                         if "Invalid tid" in str(e) and invalid_tid < 5 and time.monotonic() < deadline:
@@ -158,7 +162,7 @@ class FazClient:
         rows = list(rows[:limit])
         prev = rows[:1]
         while rows and len(rows) < limit:
-            page = self.call("get", url, apiver=3, offset=len(rows), limit=limit - len(rows)) or {}
+            page = self.call("get", url, apiver=3, offset=len(rows), limit=min(limit - len(rows), PAGE_MAX)) or {}
             data = page.get("data") or []
             if not data or data[:1] == prev:  # acabou, ou o FAZ ignorou o offset
                 break
