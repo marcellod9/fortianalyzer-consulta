@@ -128,7 +128,10 @@ FLP.threatsTrend = (() => {
   async function init(defaultAdom) {
     document.getElementById("trendForm").addEventListener("submit", (ev) => { ev.preventDefault(); run(false); });
     document.getElementById("trendRefresh").addEventListener("click", () => run(true));
-    picker = await FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("trendDevices"), defaultAdom);
+    const adom = document.getElementById("adom");
+    picker = await FLP.loadAdomsAndDevices(adom, document.getElementById("trendDevices"), defaultAdom);
+    // com um ADOM só (o caso da Marista: root) o campo não ajuda e fica escondido
+    document.getElementById("trendAdomCol").classList.toggle("d-none", adom.options.length <= 1);
   }
 
   return { init, _last: () => last };
