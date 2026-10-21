@@ -7,7 +7,7 @@
     sem comunicação há 7 dias ou mais, ou fora do inventário do Vision One. Nome, usuário e MAC vêm da identificação de
     dispositivos do FortiGate; a situação do agente vem do inventário de endpoints do Vision One.</div>
   <div class="row g-2 align-items-end">
-    <div class="col-md-2 d-none" id="trendAdomCol"><label class="form-label small">ADOM</label><select class="form-select form-select-sm" id="adom"></select></div>
+    <div class="d-none" id="trendAdomCol" aria-hidden="true"><!-- ADOM padrão (FAZ_DEFAULT_ADOM); o FAZ lista também os ADOMs de fábrica, então o campo fica sempre escondido --><label class="form-label small">ADOM</label><select class="form-select form-select-sm" id="adom"></select></div>
     <div class="col-md-4 col-lg-3"><label class="form-label small">Firewall (unidade)</label><div id="trendDevices"></div></div>
     <div class="col-md-3 col-lg-2"><label class="form-label small">Vistas no firewall em</label>
       <select class="form-select form-select-sm" id="trendPeriod">

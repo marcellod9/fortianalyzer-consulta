@@ -130,8 +130,6 @@ FLP.threatsTrend = (() => {
     document.getElementById("trendRefresh").addEventListener("click", () => run(true));
     const adom = document.getElementById("adom");
     picker = await FLP.loadAdomsAndDevices(adom, document.getElementById("trendDevices"), defaultAdom);
-    // com um ADOM só (o caso da Marista: root) o campo não ajuda e fica escondido
-    document.getElementById("trendAdomCol").classList.toggle("d-none", adom.options.length <= 1);
   }
 
   return { init, _last: () => last };
