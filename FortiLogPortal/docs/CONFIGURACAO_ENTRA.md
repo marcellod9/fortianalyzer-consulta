@@ -23,7 +23,7 @@ que o portal também confira, use o **contexto de autenticação** opcional (pas
 
 Centro de administração do Microsoft Entra (entra.microsoft.com) > **Identidade > Aplicativos > Registros de aplicativo > Novo registro**:
 
-- Nome: `FortiLogPortal`
+- Nome: `Radar Marista` (um registro já criado com outro nome, como `FortiLogPortal`, continua funcionando; o nome não entra no `.env`)
 - Tipos de conta: **Somente contas deste diretório organizacional** (locatário único)
 - URI de redirecionamento: plataforma **Web**, `http://localhost:8000/auth/callback`
 
@@ -65,7 +65,7 @@ As duas formas valem juntas.
 
 ## 5. Quem pode entrar
 
-**Aplicativos empresariais > FortiLogPortal**:
+**Aplicativos empresariais > Radar Marista**:
 
 - **Propriedades > Atribuição obrigatória? = Sim**. Só quem for atribuído entra; os demais são recusados pela Microsoft.
 - **Usuários e grupos > Adicionar**: adicione o grupo da Sustentação (acesso padrão) e, se usar o passo 4,
@@ -76,7 +76,7 @@ As duas formas valem juntas.
 **Proteção > Acesso Condicional > Nova política** (requer Entra ID P1):
 
 - Usuários: os grupos do passo 5 (ou todos os usuários), excluindo as contas de emergência.
-- Recursos de destino: **FortiLogPortal**.
+- Recursos de destino: **Radar Marista**.
 - Conceder: **Exigir força de autenticação > Autenticação multifator** (ou *MFA resistente a phishing*).
 - Sessão (opcional): **Frequência de entrada** de 8 horas.
 - Comece em **Somente relatório**, confira os logs de entrada e depois mude para **Ativado**.
@@ -85,7 +85,7 @@ As duas formas valem juntas.
 
 Use este passo para o portal também recusar um login que não passou pela política de MFA.
 
-1. **Acesso Condicional > Contexto de autenticação > Novo**: ID `c1`, nome "MFA FortiLogPortal", marque
+1. **Acesso Condicional > Contexto de autenticação > Novo**: ID `c1`, nome "MFA Radar Marista", marque
    *Publicar em aplicativos*.
 2. Em uma política de Acesso Condicional, escolha **Recursos de destino > Contexto de autenticação > c1** e
    conceda *Exigir autenticação multifator*.

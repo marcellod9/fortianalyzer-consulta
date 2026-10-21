@@ -145,7 +145,7 @@ A URL da API depende da região do tenant. `portal.xdr.trendmicro.com` correspon
 
 ### Criar a chave de API
 
-1. No console: **Administration > User Roles**: crie uma função (ex.: `FortiLogPortal-Leitura`)
+1. No console: **Administration > User Roles**: crie uma função (ex.: `RadarMarista-Leitura`)
    apenas com permissões de visualização de:
    - *Threat Intelligence > Suspicious Object Management* (View);
    - *Search* (View) — para detecções;

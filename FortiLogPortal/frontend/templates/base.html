@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}FortiLogPortal{% endblock %} · Marista Brasil</title>
+  <title>{% block title %}Início{% endblock %} · Radar Marista</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v }}">
@@ -12,7 +12,7 @@
 <body data-sandbox="{{ 1 if sandbox_enabled else 0 }}">
 <aside class="flp-sidebar p-3 d-flex flex-column">
   <a href="/" class="brand-logo mb-2" title="Início"><img src="/static/img/marista-brasil.png?v={{ asset_v }}" class="logo-light" alt="Marista Brasil"><img src="/static/img/marista-brasil-escuro.png?v={{ asset_v }}" class="logo-dark" alt="Marista Brasil"></a>
-  <a href="/" class="brand fs-6 mb-0 text-decoration-none"><i class="bi bi-shield-lock"></i> FortiLogPortal</a>
+  <a href="/" class="brand fs-6 mb-0 text-decoration-none"><i class="bi bi-shield-lock"></i> Radar Marista</a>
   <div class="small text-body-secondary mb-3">Consultas de segurança · Sustentação</div>
   <nav class="nav flex-column gap-1">
     {% for path, name, title, icon in pages %}

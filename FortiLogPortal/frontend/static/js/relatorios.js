@@ -1,4 +1,4 @@
-/* FortiLogPortal - Relatórios de acesso com gráficos */
+/* Radar Marista - Relatórios de acesso com gráficos */
 "use strict";
 FLP.reports = (() => {
   const esc = FLP.esc;

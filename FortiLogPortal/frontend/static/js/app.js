@@ -1,4 +1,4 @@
-/* FortiLogPortal - utilitários comuns da interface */
+/* Radar Marista - utilitários comuns da interface */
 "use strict";
 
 const FLP = (() => {

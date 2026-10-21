@@ -1,4 +1,4 @@
-"""Inicia o FortiLogPortal em http://127.0.0.1:8000 (ou PORTAL_HOST/PORTAL_PORT).
+"""Inicia o Radar Marista em http://127.0.0.1:8000 (ou PORTAL_HOST/PORTAL_PORT).
 
 Uso (na pasta FortiLogPortal):  python backend\\run.py [--no-browser] [--reload]
 """
@@ -16,13 +16,13 @@ from app.config import settings  # noqa: E402
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="FortiLogPortal")
+    p = argparse.ArgumentParser(description="Radar Marista")
     p.add_argument("--no-browser", action="store_true", help="não abrir o navegador")
     p.add_argument("--reload", action="store_true", help="recarregar ao alterar o código (desenvolvimento)")
     args = p.parse_args()
 
     url = f"http://{settings.host}:{settings.port}"
-    print(f"FortiLogPortal em {url}  (Ctrl+C para parar)")
+    print(f"Radar Marista em {url}  (Ctrl+C para parar)")
     if settings.auth_enabled:  # o login Microsoft volta para o endereço cadastrado no Entra (ex.: http://localhost:8000)
         from app.services.auth import redirect_origin
         url = redirect_origin()

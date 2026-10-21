@@ -1,4 +1,4 @@
-﻿# FortiLogPortal - inicia o portal em http://127.0.0.1:8000
+﻿# Radar Marista - inicia o portal em http://127.0.0.1:8000
 param([switch]$NoBrowser, [switch]$Reload)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot

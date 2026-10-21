@@ -73,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const ticketText = (r) => [
-    "Diagnóstico de acesso (FortiLogPortal)",
+    "Diagnóstico de acesso (Radar Marista)",
     `Quem: ${r.quem}${r.origem.ips.length ? ` (IP: ${r.origem.ips.join(", ")})` : ""}${r.origem.maquinas.length ? ` - máquina: ${r.origem.maquinas.join(", ")}` : ""}`,
     `Destino: ${r.destino || "(qualquer destino)"}`,
     `Período: ${r.periodo.inicio} a ${r.periodo.fim}`,

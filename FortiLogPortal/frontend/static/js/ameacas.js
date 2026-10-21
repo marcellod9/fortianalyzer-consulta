@@ -1,4 +1,4 @@
-/* FortiLogPortal - Ameaças: máquinas comprometidas (IOC) e ranking de ameaças */
+/* Radar Marista - Ameaças: máquinas comprometidas (IOC) e ranking de ameaças */
 "use strict";
 FLP.threats = (() => {
   const esc = FLP.esc;

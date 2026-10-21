@@ -50,7 +50,7 @@ def to_xlsx(columns, rows, title: str, meta: dict) -> bytes:
     ws.title = "Resultado"
     ws.append([title])
     ws["A1"].font = Font(bold=True, size=13)
-    ws.append([f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo FortiLogPortal"] +
+    ws.append([f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo Radar Marista"] +
               [f"{k}: {_cell(v)}" for k, v in (meta or {}).items()])
     ws.append([])
     ws.append([label for _, label in columns])
@@ -88,7 +88,7 @@ def to_pdf(columns, rows, title: str, meta: dict) -> bytes:
     cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
     headst = ParagraphStyle("head", parent=cell, textColor=colors.white, fontName="Helvetica-Bold")
     story = [Paragraph(escape(title), styles["Title"]),
-             Paragraph(escape(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo FortiLogPortal. " +
+             Paragraph(escape(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo Radar Marista. " +
                               " | ".join(f"{k}: {_cell(v)}" for k, v in (meta or {}).items())), styles["Normal"]),
              Spacer(1, 4 * mm)]
     data = [[Paragraph(escape(label), headst) for _, label in columns]]

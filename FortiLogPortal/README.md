@@ -1,4 +1,4 @@
-# FortiLogPortal
+# Radar Marista
 
 Portal web local para a equipe de **Sustentação do Marista Brasil** consultar, sem acesso direto às
 ferramentas de segurança:

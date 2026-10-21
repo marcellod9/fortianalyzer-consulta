@@ -1,4 +1,4 @@
-﻿# FortiLogPortal - atualização automática a partir do GitHub
+﻿# Radar Marista - atualização automática a partir do GitHub
 #
 # Baixa a versão mais recente do repositório, substitui o código (backend, frontend,
 # scripts, docs, tests) e preserva os seus dados locais:
@@ -55,7 +55,7 @@ if (-not $Repo)   { $Repo = "marcellod9/fortianalyzer-consulta" }
 if (-not $Branch) { $Branch = Get-EnvValue "UPDATE_BRANCH" }
 if (-not $Branch) { $Branch = "claude/fortilogportal-poc-vf3roq" }
 
-Write-Host "== FortiLogPortal: atualização a partir de github.com/$Repo ($Branch)" -ForegroundColor Cyan
+Write-Host "== Radar Marista: atualização a partir de github.com/$Repo ($Branch)" -ForegroundColor Cyan
 
 # 1. O portal precisa estar parado
 try {
@@ -70,7 +70,7 @@ $installed = ""
 try { if (Test-Path $versionFile) { $installed = ([IO.File]::ReadAllText($versionFile)).Trim() } } catch { }
 $latest = ""
 try {
-    $commit = Invoke-RestMethod -UseBasicParsing -Headers @{ "User-Agent" = "FortiLogPortal-update" } `
+    $commit = Invoke-RestMethod -UseBasicParsing -Headers @{ "User-Agent" = "RadarMarista-update" } `
         "https://api.github.com/repos/$Repo/commits/$([uri]::EscapeDataString($Branch))"
     $latest = $commit.sha
     Write-Host ("Versão disponível: {0} - {1}" -f $latest.Substring(0, 7), ($commit.commit.message -split "`n")[0])

@@ -55,7 +55,7 @@ class VisionOneClient:
         self.verify = verify
         self.timeout = timeout
         self._http = session or requests.Session()
-        self._http.headers.update({"Authorization": f"Bearer {token}", "User-Agent": "FortiLogPortal/0.1"})
+        self._http.headers.update({"Authorization": f"Bearer {token}", "User-Agent": "RadarMarista/0.1"})
 
     def close(self) -> None:
         self._http.close()

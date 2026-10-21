@@ -1,4 +1,4 @@
 @echo off
-REM FortiLogPortal - install
+REM Radar Marista - install
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
 pause

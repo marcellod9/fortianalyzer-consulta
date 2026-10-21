@@ -234,7 +234,7 @@ def to_pdf(rep: dict) -> bytes:
         return d
 
     story = [Paragraph(escape(rep["titulo"]), st["Title"]),
-             Paragraph(escape(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo FortiLogPortal com logs do FortiAnalyzer"
+             Paragraph(escape(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo Radar Marista com logs do FortiAnalyzer"
                               f" (filtro web e controle de aplicações)."), small), Spacer(1, 3 * mm)]
     meta = _meta(rep)
     half = (len(meta) + 1) // 2
@@ -306,7 +306,7 @@ def to_xlsx(rep: dict, columns: list[tuple[str, str]]) -> bytes:
     bold, head = Font(bold=True), PatternFill("solid", fgColor=HEAD[1:])
     ws.append([rep["titulo"]])
     ws["A1"].font = Font(bold=True, size=13)
-    ws.append([f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo FortiLogPortal"])
+    ws.append([f"Gerado em {datetime.now():%d/%m/%Y %H:%M} pelo Radar Marista"])
     ws.append([])
     for k, v in _meta(rep):
         ws.append([k, v])

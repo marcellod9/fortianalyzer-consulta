@@ -17,7 +17,7 @@ def client():
 @pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/correlacao", "/historico", "/configuracao"])
 def test_pages_render(client, path):
     r = client.get(path)
-    assert r.status_code == 200 and "FortiLogPortal" in r.text
+    assert r.status_code == 200 and "Radar Marista" in r.text
 
 
 def test_old_blocks_page_redirects_to_logs(client):

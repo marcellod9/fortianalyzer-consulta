@@ -1,4 +1,4 @@
-﻿# FortiLogPortal - executa os testes automatizados (não acessam as APIs reais)
+﻿# Radar Marista - executa os testes automatizados (não acessam as APIs reais)
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
 $venvPy = Join-Path $Root ".venv\Scripts\python.exe"

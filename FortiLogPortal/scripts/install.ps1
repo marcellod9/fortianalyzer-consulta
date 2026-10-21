@@ -1,9 +1,9 @@
-﻿# FortiLogPortal - instalação local (Windows / PowerShell)
+﻿# Radar Marista - instalação local (Windows / PowerShell)
 # Uso: clique duas vezes em scripts\install.bat  ou  powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
-Write-Host "== FortiLogPortal: instalação em $Root" -ForegroundColor Cyan
+Write-Host "== Radar Marista: instalação em $Root" -ForegroundColor Cyan
 
 # 1. Python 3.10+
 $py = $null

@@ -1,4 +1,4 @@
-/* FortiLogPortal - dashboard */
+/* Radar Marista - dashboard */
 "use strict";
 (() => {
   const charts = {};

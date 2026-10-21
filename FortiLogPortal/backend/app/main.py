@@ -1,4 +1,4 @@
-"""FortiLogPortal - aplicação FastAPI.
+"""Radar Marista - aplicação FastAPI.
 
 Executar:  python backend\\run.py   (ou scripts\\start.bat)
 """
@@ -33,7 +33,7 @@ async def lifespan(_app: FastAPI):
 def _startup():
     database.init_db()
     database.cache_purge()
-    log.info("FortiLogPortal %s iniciado (demo=%s, FAZ=%s, Vision One=%s)", __version__, settings.demo,
+    log.info("Radar Marista %s iniciado (demo=%s, FAZ=%s, Vision One=%s)", __version__, settings.demo,
              settings.faz_url or "não configurado", settings.v1_base_url if settings.v1_token else "não configurado")
     if settings.auth_enabled:
         log.info("Login Microsoft Entra ID ativo (redirect %s, MFA pelo Acesso Condicional%s)", settings.redirect_uri,
@@ -46,7 +46,7 @@ def _startup():
         log.warning("MODO DEMONSTRAÇÃO ATIVO: os dados exibidos são simulados (PORTAL_DEMO=true).")
 
 
-app = FastAPI(title="FortiLogPortal", version=__version__, lifespan=lifespan,
+app = FastAPI(title="Radar Marista", version=__version__, lifespan=lifespan,
               description="Portal de consultas de segurança (FortiAnalyzer + Trend Vision One) - POC Marista Brasil")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend" / "static")), name="static")
 app.include_router(auth_router.router)
