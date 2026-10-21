@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import auth, correlation, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
+from ..services import auth, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -243,36 +243,6 @@ def v1_machine(request: Request, ip: str | None = Query(None, max_length=64),
         r = machine.machine_status(ip, nome, usuario, refresh=refresh)
         info.update(count=len(r["endpoints"]), summary=f"{r['titulo']} ({len(r['alertas'])} alerta(s) aberto(s))")
     return r
-
-
-# ---- correlação -------------------------------------------------------------------------
-class CorrQuery(BaseModel):
-    indicator: str = Field(min_length=1, max_length=2048)
-    start: datetime | None = None
-    end: datetime | None = None
-    adom: str | None = None
-
-
-@router.post("/correlation")
-def correlate(q: CorrQuery, request: Request):
-    end = q.end or datetime.now().replace(second=0, microsecond=0)
-    start = q.start or end - timedelta(days=1)
-    if end <= start:
-        raise HTTPException(400, "A data final precisa ser maior que a data inicial.")
-    if q.adom and not SAFE_NAME.match(q.adom):
-        raise HTTPException(400, "ADOM inválido")
-    with tracked(request, "correlacao", q.indicator, q.model_dump(mode="json")) as info:
-        c = correlation.correlate(q.indicator, start, end, q.adom, username=who(request))
-        faz_part = c.get("fortianalyzer") or {}
-        info.update(count=len(faz_part.get("eventos", [])), blocked=faz_part.get("bloqueios", 0),
-                    summary=" ".join(c["analise"])[:900])
-    rows = [{"campo": "Análise", "valor": linha} for linha in c["analise"]]
-    if c.get("visionone"):
-        rows += _rep_rows(c["visionone"])
-    c["result_id"] = store_result("correlacao", f"Correlação {c['indicador']}", REP_COLUMNS, rows)
-    c["eventos_result_id"] = store_result("correlacao-eventos", f"Eventos {c['indicador']}", explain.COLUMNS,
-                                          faz_part.get("eventos", []))
-    return c
 
 
 # ---- dashboard ---------------------------------------------------------------------------

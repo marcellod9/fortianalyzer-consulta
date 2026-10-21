@@ -14,7 +14,7 @@ def client():
         yield c
 
 
-@pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/correlacao", "/historico", "/configuracao"])
+@pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/historico", "/configuracao"])
 def test_pages_render(client, path):
     r = client.get(path)
     assert r.status_code == 200 and "Radar Marista" in r.text
@@ -23,6 +23,9 @@ def test_pages_render(client, path):
 def test_old_blocks_page_redirects_to_logs(client):
     r = client.get("/bloqueios", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/logs"
+    r = client.get("/correlacao", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/reputacao"
+    assert "/correlacao" not in client.get("/").text
 
 
 def test_blocked_logs_search_and_export(client):
@@ -44,14 +47,12 @@ def test_logs_search_validation_message(client):
     assert r.status_code == 200 and r.json()["filter"] == 'hostname~"facebook.com"'
 
 
-def test_reputation_correlation_history_dashboard(client):
+def test_reputation_history_dashboard(client):
     r = client.post("/api/v1/reputation", json={"indicator": "45.33.32.156"}, headers=H)
     assert r.status_code == 200 and r.json()["reputacao"] == "Suspeito"
     assert client.post("/api/v1/reputation", json={"indicator": "x y"}).status_code == 400
-    c = client.post("/api/correlation", json={"indicator": "malware-test.example"}, headers=H)
-    assert c.status_code == 200 and any("MALICIOSO" in line for line in c.json()["analise"])
     hist = client.get("/api/history").json()
-    assert {"logs", "reputacao", "correlacao"} <= {h["query_type"] for h in hist}
+    assert {"logs", "reputacao"} <= {h["query_type"] for h in hist}
     assert any(h["username"] == "teste.sustentacao" for h in hist)
     assert client.get("/api/export/history.xlsx").content.startswith(b"PK")
     dash = client.get("/api/dashboard/faz?hours=24").json()

@@ -661,7 +661,7 @@ const FLP = (() => {
     box.innerHTML = `<div class="alert alert-warning small mb-0">O Sandbox não terminou em 10 minutos. Veja o resultado depois em Threat Intelligence &gt; Sandbox Analysis (tarefa ${esc(taskId)}).</div>`;
   }
 
-  // Cartão de reputação (aba Reputação, Correlação e janela do evento)
+  // Cartão de reputação (aba Reputação e janela do evento)
   function renderReputation(container, r) {
     const list = (xs) => (xs || []).join(", ") || "-";
     const row = (k, v) => `<dt class="col-sm-3">${k}</dt><dd class="col-sm-9">${v}</dd>`;

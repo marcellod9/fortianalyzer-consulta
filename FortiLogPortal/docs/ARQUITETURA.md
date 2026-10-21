@@ -17,7 +17,6 @@ FastAPI (backend/app)
         ├── explain.py         normalização e linguagem simples
         ├── visionone.py       cliente REST v3.0 (requests)       ──HTTPS──▶ Vision One
         ├── reputation.py      reputação consolidada de IP/domínio/URL (Vision One + categoria do FortiGuard)
-        ├── correlation.py     FortiAnalyzer x Vision One
         ├── dashboard.py       agregações do dashboard
         ├── export.py          CSV / XLSX (openpyxl) / PDF (reportlab)
         └── telemetry.py       tempo de resposta e falhas das integrações
@@ -71,7 +70,6 @@ Credenciais **não** ficam no banco.
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |
 | GET | `/api/v1/endpoints` | inventário de endpoints |
 | GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |
-| POST | `/api/correlation` | `{indicator, start, end, adom}` |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
 | POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos |
 | POST | `/api/threats/live?first=` | `{start, end, adom, devices, fontes}` da janela mais recente; a tela pede uma fonte por vez e repete a cada 15/30/60 s: eventos de ameaça com `id` estável, país (`pais`/`mapa`), direção (`entrada`) e firewall. Só a primeira consulta (`first=true`) entra no histórico |
@@ -94,14 +92,12 @@ exigem a permissão de relatórios, e `/api/status*`, `/api/app-log`, `/api/cach
 `LogQuery`: `adom, devices[], logtype, start, end, srcip, dstip, srcport, dstport, user, url,
 hostname, policy, profile, srcintf, dstintf, action, only_blocked, limit`.
 
-## Preparação para correlação e novos módulos
+## Preparação para novos módulos
 
 - Os clientes (`fortianalyzer.py`, `visionone.py`) só falam com as APIs; regras de negócio ficam
   em `services/` separados. Um novo módulo (ex.: incidentes) é um novo serviço + rota + página.
 - `visionone.py` já expõe `workbench_alerts`, `endpoints`, `search_endpoints`, `endpoint_details` e
   Sandbox, base para Alertas, Incidentes/Workbench e Inventário. `machine.py` usa os três primeiros
   para a situação da máquina (os alertas ficam 5 minutos em cache e são filtrados no portal).
-- `correlation.py` recebe um indicador e cruza eventos do FAZ com a reputação; a mesma estrutura
-  serve para correlacionar alertas do Vision One com logs do firewall (por IP/host/usuário).
 - `reputation.lookup` aceita tipos novos (hash de arquivo) adicionando um ramo em
   `parse_indicator` e no casamento com Suspicious Objects (`fileSha1`, `fileSha256`).

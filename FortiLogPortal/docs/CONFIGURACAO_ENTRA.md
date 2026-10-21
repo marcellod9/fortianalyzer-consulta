@@ -125,7 +125,7 @@ novo. O botão de lixeira remove a pessoa da lista e encerra as sessões abertas
 some do menu e a API de relatórios responde 403.
 
 As abas **Configuração** e **Acessos** são só dos administradores. As demais abas (Dashboard, Diagnóstico,
-Logs, Reputação, Correlação e Histórico) ficam abertas a todos que conseguem entrar.
+Logs, Reputação e Histórico) ficam abertas a todos que conseguem entrar.
 
 ## Problemas comuns
 

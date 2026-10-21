@@ -32,7 +32,6 @@ PAGES = [
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
     ("/ameacas", "ameacas", "Ameaças", "bug"),
     ("/relatorios", "relatorios", "Relatórios", "pie-chart"),
-    ("/correlacao", "correlacao", "Correlação", "diagram-3"),
     ("/historico", "historico", "Histórico", "clock-history"),
     ("/configuracao", "configuracao", "Configuração", "gear"),
     ("/acessos", "acessos", "Acessos", "people"),
@@ -71,6 +70,12 @@ def _page(name: str):
 def old_blocks_page():
     """A aba Bloqueios foi incorporada à aba Logs (Somente bloqueios / filtro Bloqueados)."""
     return RedirectResponse("/logs", status_code=307)
+
+
+@router.get("/correlacao", include_in_schema=False)
+def old_correlation_page():
+    """A aba Correlação foi removida (2026-10-21); a reputação do indicador fica na aba Reputação."""
+    return RedirectResponse("/reputacao", status_code=307)
 
 
 for path, name, _title, _icon in PAGES:

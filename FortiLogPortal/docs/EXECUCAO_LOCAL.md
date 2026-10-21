@@ -50,9 +50,8 @@ o usuário do Windows que iniciou o servidor.
    tabela *Usuários que acessaram* deve trazer todos os usuários vistos no Log View com o mesmo filtro. Quando o período
    tem mais eventos que `REPORT_MAX_ROWS_FILTRADO` (20000), o portal faz até 3 buscas extras
    excluindo os usuários já vistos para completar a lista, e avisa se ela ficou completa.
-8. **Correlação**: consulte um domínio bloqueado por categoria e um que esteja no Vision One.
-9. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
-10. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
+8. **Exportação**: exporte um resultado em CSV, XLSX e PDF (cópias ficam em `exports\`).
+9. **Histórico e Dashboard**: confira se as consultas aparecem e se os gráficos carregam.
 
 ## Dicas de desempenho
 

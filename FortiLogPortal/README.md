@@ -6,7 +6,6 @@ ferramentas de segurança:
 - bloqueios de navegação e de firewall, com a **regra** e a **política** responsáveis;
 - logs de tráfego, filtro web, aplicações, DNS, IPS e antivírus do **FortiAnalyzer**;
 - reputação de **URLs, domínios e IPs** e indicadores de ameaça (IOC) no **Trend Micro Vision One**;
-- correlação FortiAnalyzer + Vision One para um indicador;
 - histórico de consultas, dashboard e exportação em **CSV, XLSX e PDF**.
 
 Os eventos técnicos são traduzidos para linguagem simples:
@@ -46,7 +45,6 @@ Quer ver a interface antes de ter os tokens? Coloque `PORTAL_DEMO=true` no `conf
 | **Reputação** | URL, domínio ou IP (ou vários, um por linha) no Vision One, com a categoria do FortiGuard vista nos logs: reputação, risk score, categoria, severidade, tipo da ameaça, IOC relacionados, última análise, confiança, fonte e recomendações; o Sandbox reaproveita a análise da mesma URL das últimas 24 h e mostra a cota do dia |
 | **Ameaças** | Máquinas comprometidas (alertas de IOC e botnet do Event Monitor do FortiAnalyzer, sem ACK primeiro), Top Threats do FortiView (pontuação, incidentes bloqueados e permitidos), mapa de ameaças por país e ranking de ameaças dos logs (IPS, antivírus, sites maliciosos e phishing, botnet, DNS, tráfego com ameaça): ameaças, máquinas e usuários afetados, o que não foi bloqueado em destaque, gráficos, máquina no Vision One e exportação. Sub-aba **Mapa em tempo real**: arcos animados do firewall ao país de cada ameaça nova, lista ao vivo, pausa e velocidade. Sub-aba **Trend inativo**: máquinas vistas no firewall da unidade com o agente Trend desligado, sem comunicação ou fora do inventário do Vision One, com usuário, MAC e rede para localizar |
 | **Relatórios** | Relatório de acessos geral, por usuário, IP, site ou aplicação, com gráficos de pizza (categorias, firewalls), barras (sites, aplicações, usuários, IPs, máquinas) e linha do tempo de permitidos x bloqueados; tabela completa de quem acessou (usuário, IP, máquina, acessos, primeiro e último acesso, firewall) ou, no relatório de um usuário, do que ele acessou; baixa em PDF (com os gráficos) ou Excel (gráficos e eventos) |
-| **Correlação** | Um indicador cruzado nas duas ferramentas, com análise consolidada |
 | **Histórico** | Todas as consultas (data, usuário, tipo, termo, resultado), com filtro e exportação |
 | **Configuração** | Teste de conexão das APIs, tempo de resposta, logs internos e limpeza de cache (só administradores) |
 | **Acessos** | Quem entrou no portal e quem pode emitir relatórios: o administrador inclui o e-mail e liga ou desliga a permissão (só administradores) |
@@ -62,7 +60,7 @@ FortiLogPortal
 │       ├── config.py   leitura de config\.env (sem segredos no código)
 │       ├── database.py SQLite: histórico, logs internos, cache, configurações, temporários
 │       ├── routers\    API REST (/api/...) e páginas
-│       ├── services\   FortiAnalyzer, Vision One, diagnóstico, reputação, correlação, explicação, exportação, dashboard
+│       ├── services\   FortiAnalyzer, Vision One, diagnóstico, reputação, explicação, exportação, dashboard
 │       └── demo\       dados simulados (somente PORTAL_DEMO=true)
 ├── frontend\           templates Jinja2, Bootstrap 5, JavaScript (bibliotecas locais, sem CDN)
 ├── config\             .env.example (modelo) e .env (seu, fora do git)
