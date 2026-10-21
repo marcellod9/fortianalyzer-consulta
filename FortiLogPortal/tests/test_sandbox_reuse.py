@@ -112,3 +112,14 @@ def test_lookup_reports_reuse_and_quota_error(v1, monkeypatch):
     v1.remaining = 0
     r3 = reputation.lookup("http://reuso-lookup2.example/", "url", use_sandbox=True, username="ana")
     assert "cota diária" in r3["erros"]["sandbox"]
+
+
+def test_sandbox_403_says_which_permission_to_enable(v1, monkeypatch):
+    monkeypatch.setattr(reputation.settings, "v1_sandbox_enabled", True)
+
+    def denied(url):
+        raise V1Error("Vision One HTTP 403: sem permissão", 403)
+    v1.sandbox_submit_url = denied
+    r = reputation.lookup("http://sem-permissao.example/", "url", use_sandbox=True)
+    assert "Threat Intelligence > Sandbox Analysis" in r["erros"]["sandbox"]
+    assert "Submit objects" in r["erros"]["sandbox"]

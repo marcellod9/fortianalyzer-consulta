@@ -176,6 +176,18 @@ def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool)
     return fortiguard_from_logs(host_of(value) if ioc_type == "url" else value)
 
 
+# O que marcar na função (role) da chave de API quando o Vision One responde 403, com os nomes do console em inglês.
+_ROLE = "Na função (role) da chave de API no Vision One (Administration > User Roles), "
+PERMISSION_HINT = {
+    "suspicious_objects": _ROLE + "habilite Threat Intelligence > Suspicious Object Management (View).",
+    "exceptions": _ROLE + "habilite Threat Intelligence > Suspicious Object Management (View).",
+    "detections": _ROLE + "habilite Agentic SIEM & XDR > Search (View).",
+    "workbench": _ROLE + "habilite Agentic SIEM & XDR > Workbench (View).",
+    "sandbox": _ROLE + "habilite Threat Intelligence > Sandbox Analysis com View, filter, and search e Submit objects.",
+    "sandbox_result": _ROLE + "habilite Threat Intelligence > Sandbox Analysis com View, filter, and search.",
+}
+
+
 def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "",
            sandbox_task: str | None = None, fortiguard_category: str | None = None,
            fortiguard_from_faz: bool = True, sandbox_force: bool = False) -> dict:
@@ -212,7 +224,8 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         try:
             sources[name] = fn()
         except V1Error as e:
-            errors[name] = str(e)
+            hint = PERMISSION_HINT.get(name) if e.status == 403 else None
+            errors[name] = f"{e}. {hint}" if hint else str(e)
 
     # Ao enviar ao Sandbox ou incluir um Sandbox concluído, reaproveita as fontes da consulta anterior
     # (mesmo indicador): só o Sandbox é consultado de novo.
