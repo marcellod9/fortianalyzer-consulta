@@ -125,6 +125,28 @@ def test_unmanaged_match_is_reported_as_no_trend(monkeypatch):
     out = tc.run(tc.CoverageQuery(start=NOW - timedelta(hours=1), end=NOW))
     assert out["resumo"]["sem_trend"] == 1 and out["resumo"]["desconhecido"] == 0
     assert out["linhas"][0]["situacao"] == tc.UNMANAGED
+    assert out["linhas"][0]["nao_gerenciada"] and out["linhas"][0]["grupo"] == "Unmanaged endpoints"
+    assert out["resumo"]["nao_gerenciadas"] == 1
+
+
+def test_machine_lookup_reports_unmanaged_endpoint(monkeypatch):
+    from app.services import machine
+
+    class V1:
+        def search_endpoints(self, query, max_items=20):
+            return []  # a busca do inventário não devolve máquinas sem agente
+
+        def workbench_alerts(self, *a, **k):
+            return []
+    inv = [{"endpointName": "EEL01800040", "agentGuid": "a51c2d42", "lastUsedIp": None, "ipAddresses": []},
+           {"endpointName": "OUTRA", "lastUsedIp": "10.0.0.9", "eppAgent": {"status": "on"}}]
+    monkeypatch.setattr(machine.visionone, "get_client", lambda: V1())
+    monkeypatch.setattr(tc, "cached_inventory", lambda: inv)
+    d = machine.machine_status(ip="10.52.177.48", nome="EEL01800040", refresh=True)
+    assert d["status"] == "nao_gerenciada" and "Unmanaged endpoints" in d["resumo"]
+    assert d["nao_gerenciadas"][0]["nome"] == "EEL01800040" and d["nao_gerenciadas"][0]["encontrado_por"] == ["nome"]
+    monkeypatch.setattr(tc, "cached_inventory", lambda: None)
+    assert machine.machine_status(ip="10.52.177.48", nome="EEL01800040", refresh=True)["status"] == "sem_agente"
 
 
 def test_only_windows_filter():

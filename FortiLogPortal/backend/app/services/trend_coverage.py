@@ -128,9 +128,36 @@ def is_windows(m: dict) -> bool:
 
 
 # ---- inventário do Vision One ----------------------------------------------------------------
+def _inventory_key() -> str:
+    return f"v1:endpoint-inventory:{settings.v1_inventory_max}"
+
+
+def cached_inventory() -> list[dict] | None:
+    """Inventário já lido pela aba Trend inativo (cache de 30 min), sem consultar o Vision One de novo."""
+    return database.cache_get(_inventory_key())
+
+
+def unmanaged_matches(ip: str | None, nome: str | None) -> list[dict]:
+    """Máquinas descobertas (Unmanaged endpoints, sem agente) com o nome ou o IP, pelo inventário em cache.
+    A busca do Endpoint Inventory (eiqs) só devolve máquinas com agente, então elas não aparecem lá."""
+    eps = cached_inventory() or []
+    name = norm_host(nome) if nome else None
+    out = []
+    for ep in eps:
+        if has_agent(ep):
+            continue
+        ips = {ep.get("lastUsedIp"), *(ep.get("ipAddresses") or [])} - {None, ""}
+        por = [k for k, ok in (("nome", name and norm_host(_name(ep)) == name), ("ip", ip and ip in ips)) if ok]
+        if por:
+            out.append({"nome": _name(ep), "guid": ep.get("agentGuid") or "", "ips": sorted(ips),
+                        "sistema": ep.get("osName") or "", "encontrado_por": por})
+    out.sort(key=lambda e: (-len(e["encontrado_por"]), "nome" not in e["encontrado_por"]))
+    return out[:5]
+
+
 def inventory(refresh: bool = False) -> list[dict]:
     # o limite entra na chave: uma lista lida com limite menor (cortada) não é reaproveitada depois que ele sobe
-    key = f"v1:endpoint-inventory:{settings.v1_inventory_max}"
+    key = _inventory_key()
     if not refresh:
         hit = database.cache_get(key)
         if hit is not None:
@@ -143,7 +170,8 @@ def inventory(refresh: bool = False) -> list[dict]:
     return slim
 
 
-UNMANAGED = "Sem agente Trend (máquina descoberta, não gerenciada no Vision One)"
+UNMANAGED = ("Está no Vision One como não gerenciada (Endpoint Inventory > Unmanaged endpoints): "
+             "a máquina foi descoberta na rede, mas não tem o agente Trend instalado")
 
 
 def has_agent(ep: dict) -> bool:
@@ -262,6 +290,8 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
         else:
             ag, estado = None, "sem_trend"
         count[estado] += 1
+        unmanaged = bool(ep and not has_agent(ep))
+        count["nao_gerenciada"] += unmanaged
         if estado == "ativo" and not q.incluir_ativos:
             continue
         epp = (ep or {}).get("eppAgent") or {}
@@ -272,7 +302,9 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
             "sistema": m["sistema"] or (ep or {}).get("osName") or "", "tipo": m["tipo"], "rede": m["rede"],
             "ultimo_contato": ag["ultimo_contato"] if ag else "", "dias_sem_contato": ag["dias_sem_contato"] if ag else None,
             "visto": m["visto"], "firewall": m["firewall"], "sessoes": m["sessoes"],
-            "grupo": " · ".join(v for v in (epp.get("endpointGroup"), epp.get("policyName")) if v),
+            "grupo": "Unmanaged endpoints" if unmanaged else " · ".join(
+                v for v in (epp.get("endpointGroup"), epp.get("policyName")) if v),
+            "nao_gerenciada": unmanaged,
             "achado_por": por, "guid": (ep or {}).get("agentGuid") or "",
             "mesmo_usuario": bool(m["usuario"] and ep and ep.get("lastLoggedOnUser")
                                   and norm_user(m["usuario"]) == norm_user(str(ep["lastLoggedOnUser"]))),
@@ -289,7 +321,8 @@ def run(q: CoverageQuery, refresh: bool = False) -> dict:
     return {
         "linhas": rows[:SHOW_MAX], "total_linhas": len(rows),
         "resumo": {"vistas": vistos, "computadores": len(machines), "ativos": count["ativo"], "inativos": inativos,
-                   "sem_trend": count["sem_trend"], "desconhecido": count["desconhecido"], "inventario": len(eps)},
+                   "sem_trend": count["sem_trend"],
+                   "nao_gerenciadas": count["nao_gerenciada"], "desconhecido": count["desconhecido"], "inventario": len(eps)},
         "origem": origem, "avisos": avisos,
         "periodo": {"inicio": q.faz_time("start"), "fim": q.faz_time("end")},
         "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

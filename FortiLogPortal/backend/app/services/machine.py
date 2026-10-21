@@ -288,6 +288,12 @@ def machine_status(ip: str | None = None, nome: str | None = None, usuario: str 
     elif user:
         avisos.append("Sem IP ou nome da máquina: mostrando só os alertas do usuário.")
 
+    # a busca do inventário só traz máquinas com agente; as descobertas (Unmanaged endpoints) vêm da lista em cache
+    nao_gerenciadas = []
+    if query and not endpoints:
+        from .trend_coverage import unmanaged_matches  # import local: trend_coverage importa este módulo
+        nao_gerenciadas = unmanaged_matches(ip, nome)
+
     if ip and nome and endpoints and not any("nome" in e["encontrado_por"] for e in endpoints):
         avisos.append(f"No Vision One o IP {ip} está com {', '.join(e['nome'] for e in endpoints)}, não com {nome}. "
                       "O IP pode ter mudado desde o log (DHCP).")
@@ -321,7 +327,7 @@ def machine_status(ip: str | None = None, nome: str | None = None, usuario: str 
     start, end = visionone.default_window()
     out = {
         "consulta": {"ip": ip, "nome": nome, "usuario": user}, "consulta_v1": query or None,
-        "endpoints": endpoints, "alertas": abertos, "alertas_encerrados": encerrados[:10],
+        "endpoints": endpoints, "nao_gerenciadas": nao_gerenciadas, "alertas": abertos, "alertas_encerrados": encerrados[:10],
         "total_encerrados": len(encerrados), "alertas_cache": alerts_cache,
         "periodo_alertas": {"inicio": start.strftime("%Y-%m-%d"), "fim": end.strftime("%Y-%m-%d"),
                             "dias": settings.v1_lookback_days},
@@ -381,9 +387,18 @@ def conclude(d: dict) -> dict:
         return {"status": "ok", "titulo": "Nenhum alerta aberto para o usuário",
                 "resumo": f"Nenhum alerta aberto no Workbench para {alvo} nos últimos {d['periodo_alertas']['dias']} dias.",
                 "orientacao": "Para ver o agente Trend, consulte também pelo IP ou pelo nome da máquina."}
+    if d.get("nao_gerenciadas"):
+        u = d["nao_gerenciadas"][0]
+        return {"status": "nao_gerenciada", "titulo": "No Vision One, mas sem agente Trend (não gerenciada)",
+                "resumo": f"{u['nome'] or q['nome'] or q['ip']} está no Vision One em Endpoint Inventory > Unmanaged "
+                          "endpoints: a máquina foi descoberta na rede, mas o agente Trend não está instalado. "
+                          "Nenhum alerta aberto no Workbench.",
+                "orientacao": "Se a máquina é da Marista, encaminhe à equipe responsável pelo antivírus para instalar o "
+                              "agente Trend. Se for celular, notebook pessoal ou de visitante, o agente não é exigido."}
     return {"status": "sem_agente", "titulo": "Nenhum agente Trend encontrado",
             "resumo": f"O inventário do Vision One não tem máquina com {' ou '.join(v for v in (q['ip'], q['nome']) if v)}. "
                       "Nenhum alerta aberto no Workbench.",
             "orientacao": "Pode ser um aparelho sem o agente (celular, notebook pessoal ou de visitante) ou o IP mudou "
                           "desde o log (DHCP). Confira o nome da máquina com o usuário. Máquina da Marista sem o agente "
-                          "deve ser encaminhada à equipe responsável pelo antivírus."}
+                          "deve ser encaminhada à equipe responsável pelo antivírus. Se ela aparece no console em "
+                          "Unmanaged endpoints, o Vision One a conhece, mas sem o agente instalado."}

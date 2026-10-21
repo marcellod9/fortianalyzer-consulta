@@ -706,7 +706,7 @@ const FLP = (() => {
   const MACHINE_STATUS = {
     alerta: ["danger", "bi-exclamation-octagon-fill"], isolada: ["danger", "bi-slash-circle-fill"],
     atencao: ["warning", "bi-exclamation-triangle-fill"], ok: ["success", "bi-shield-fill-check"],
-    sem_agente: ["secondary", "bi-question-circle-fill"], erro: ["warning", "bi-exclamation-triangle-fill"],
+    sem_agente: ["secondary", "bi-question-circle-fill"], nao_gerenciada: ["warning", "bi-shield-slash-fill"], erro: ["warning", "bi-exclamation-triangle-fill"],
     info: ["info", "bi-info-circle-fill"],
   };
   const AGENT_CLS = { ativo: "success", desligado: "danger", sem_contato: "warning", desconhecido: "secondary" };
@@ -738,6 +738,14 @@ const FLP = (() => {
         ${e.erro ? `<div class="small text-warning-emphasis mt-1"><i class="bi bi-exclamation-triangle"></i> ${esc(e.erro)}</div>` : ""}
       </div></div>`;
     };
+    // máquina descoberta pelo Vision One (Unmanaged endpoints): está no console, mas sem agente
+    const unmanaged = (e) => `<div class="col-lg-6"><div class="border rounded p-2 h-100">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2"><i class="bi bi-pc-display"></i><b>${esc(e.nome || e.guid)}</b>
+          <span class="badge text-bg-warning">Não gerenciada · sem agente</span>
+          <span class="small text-body-secondary ms-auto">encontrada ${esc(e.encontrado_por.map((k) => found[k] || k).join(" e "))}</span></div>
+        <dl class="row small mb-0">${row("Onde está no V1", "Endpoint Inventory > Unmanaged endpoints")}
+          ${row("IP", e.ips.join(", "))}${row("Sistema", e.sistema)}${row("Endpoint GUID", e.guid)}</dl>
+      </div></div>`;
     const alertItem = (a) => `<li class="list-group-item px-2 py-1 small d-flex flex-wrap gap-2 align-items-center">
         <span class="badge text-bg-${SEV_CLS[a.severidade] || "secondary"}">${esc(a.severidade_texto)}</span>
         <b>${esc(a.modelo)}</b><span class="text-body-secondary">${esc([a.id, a.status, a.criado, a.motivos.join(", ")].filter(Boolean).join(" · "))}</span>
@@ -756,6 +764,7 @@ const FLP = (() => {
         <div class="small mb-2"><span class="fw-semibold text-primary"><i class="bi bi-lightbulb"></i> O que fazer:</span> ${esc(d.orientacao)}</div>
         ${(d.avisos || []).map((a) => `<div class="alert alert-warning small py-1 mb-2">${esc(a)}</div>`).join("")}
         ${d.endpoints.length ? `<div class="row g-2 mb-2">${d.endpoints.map(endpoint).join("")}</div>` : ""}
+        ${(d.nao_gerenciadas || []).length ? `<div class="row g-2 mb-2">${d.nao_gerenciadas.map(unmanaged).join("")}</div>` : ""}
         <div class="small fw-semibold mt-1">Alertas abertos no Workbench <span class="fw-normal text-body-secondary">(${esc(`${p.inicio} a ${p.fim}`)})</span></div>
         ${d.alertas.length ? `<ul class="list-group mt-1">${d.alertas.map(alertItem).join("")}</ul>`
           : `<div class="small text-body-secondary">${d.erros?.alertas ? "Não consultados." : "Nenhum alerta aberto para a máquina ou o usuário."}</div>`}

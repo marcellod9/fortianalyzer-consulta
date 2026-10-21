@@ -24,8 +24,9 @@ FLP.threatsTrend = (() => {
   function badge(r) {
     const [t, c] = BADGE[r.estado] || [r.estado, "text-bg-light border"];
     const days = r.dias_sem_contato != null && r.estado === "sem_contato" ? ` · ${r.dias_sem_contato} dias` : "";
-    // conhecida pelo V1 só como máquina descoberta (Unmanaged endpoints): sem agente
-    if (r.estado === "sem_trend" && r.nome_trend) return `<span class="badge ${c}" title="${esc(r.situacao)}">${t}</span><div class="small text-body-secondary">não gerenciada no V1</div>`;
+    // conhecida pelo V1 só como máquina descoberta (Unmanaged endpoints): está no console, mas sem agente
+    if (r.nao_gerenciada) return `<span class="badge text-bg-warning" title="${esc(r.situacao)}">No V1 · sem agente</span>
+      <div class="small text-body-secondary">em Unmanaged endpoints</div>`;
     return `<span class="badge ${c}" title="${esc(r.situacao)}">${t}${days}</span>`;
   }
 
@@ -58,7 +59,8 @@ FLP.threatsTrend = (() => {
         ${k("Máquinas vistas", num(r.computadores), "bi-pc-display", "", r.vistas !== r.computadores ? `${num(r.vistas - r.computadores)} fora do filtro Só Windows` : "")}
         ${k("Trend ativo", num(r.ativos), "bi-shield-check", "text-success")}
         ${k("Trend inativo", num(r.inativos), "bi-shield-x", r.inativos ? "text-danger" : "", "desligado ou sem comunicação")}
-        ${k("Sem Trend", num(r.sem_trend), "bi-shield-slash", r.sem_trend ? "text-warning" : "", "fora do inventário do Vision One")}
+        ${k("Sem Trend", num(r.sem_trend), "bi-shield-slash", r.sem_trend ? "text-warning" : "",
+            r.nao_gerenciadas ? `${num(r.nao_gerenciadas)} no V1 como não gerenciadas (sem agente)` : "fora do inventário do Vision One")}
       </div>
       <div class="card"><div class="card-body">
         <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
@@ -66,7 +68,8 @@ FLP.threatsTrend = (() => {
           <div class="btn-group btn-group-sm" role="group" id="trendFilter">
             <button type="button" class="btn btn-outline-secondary active" data-f="">Todas</button>
             <button type="button" class="btn btn-outline-secondary" data-f="inativo">Trend inativo</button>
-            <button type="button" class="btn btn-outline-secondary" data-f="sem_trend">Sem Trend</button></div>
+            <button type="button" class="btn btn-outline-secondary" data-f="sem_trend">Sem Trend</button>
+            <button type="button" class="btn btn-outline-secondary" data-f="nao_gerenciada" title="Estão no Vision One em Unmanaged endpoints, sem o agente instalado">Não gerenciadas no V1</button></div>
           <input type="search" class="form-control form-control-sm" style="max-width:16rem" id="trendSearch" placeholder="Buscar máquina, IP, usuário">
         </div>
         <div class="table-responsive" style="max-height:65vh"><table class="table table-sm table-hover align-middle small mb-0">
@@ -84,7 +87,8 @@ FLP.threatsTrend = (() => {
       const t = box.querySelector("#trendSearch").value.trim().toLowerCase();
       rows.forEach((tr, i) => {
         const e = d.linhas[i].estado;
-        const okF = !f || (f === "inativo" ? ["desligado", "sem_contato"].includes(e) : e === f);
+        const okF = !f || (f === "inativo" ? ["desligado", "sem_contato"].includes(e)
+          : f === "nao_gerenciada" ? d.linhas[i].nao_gerenciada : e === f);
         tr.classList.toggle("d-none", !(okF && (!t || tr.dataset.q.includes(t))));
       });
     };
