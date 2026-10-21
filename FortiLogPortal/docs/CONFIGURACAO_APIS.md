@@ -150,7 +150,7 @@ A URL da API depende da região do tenant. `portal.xdr.trendmicro.com` correspon
    - *Threat Intelligence > Suspicious Object Management* (View);
    - *Search* (View) — para detecções;
    - *Workbench* (View) — para alertas;
-   - *Threat Intelligence > Sandbox Analysis* (View, filter, and search e Submit objects) — só se for usar a análise de URL;
+   - *Threat Intelligence > Sandbox Analysis* (View, filter, and search e Submit object) — só se for usar a análise de URL;
    - *Endpoint Inventory* (View) — para a *Máquina no Vision One* (agente Trend da máquina de origem).
 2. **Administration > API Keys > Add API Key**: escolha a função acima e uma validade.
 3. Copie a chave para `V1_API_TOKEN`.

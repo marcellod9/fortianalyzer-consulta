@@ -183,7 +183,7 @@ PERMISSION_HINT = {
     "exceptions": _ROLE + "habilite Threat Intelligence > Suspicious Object Management (View).",
     "detections": _ROLE + "habilite Agentic SIEM & XDR > Search (View).",
     "workbench": _ROLE + "habilite Agentic SIEM & XDR > Workbench (View).",
-    "sandbox": _ROLE + "habilite Threat Intelligence > Sandbox Analysis com View, filter, and search e Submit objects.",
+    "sandbox": _ROLE + "habilite Threat Intelligence > Sandbox Analysis com View, filter, and search e Submit object.",
     "sandbox_result": _ROLE + "habilite Threat Intelligence > Sandbox Analysis com View, filter, and search.",
 }
 

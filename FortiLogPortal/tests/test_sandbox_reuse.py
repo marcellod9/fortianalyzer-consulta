@@ -122,4 +122,4 @@ def test_sandbox_403_says_which_permission_to_enable(v1, monkeypatch):
     v1.sandbox_submit_url = denied
     r = reputation.lookup("http://sem-permissao.example/", "url", use_sandbox=True)
     assert "Threat Intelligence > Sandbox Analysis" in r["erros"]["sandbox"]
-    assert "Submit objects" in r["erros"]["sandbox"]
+    assert "Submit object" in r["erros"]["sandbox"]
