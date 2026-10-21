@@ -31,6 +31,7 @@ PAGES = [
     ("/logs", "logs", "Logs", "list-ul"),
     ("/reputacao", "reputacao", "Reputação", "shield-check"),
     ("/ameacas", "ameacas", "Ameaças", "bug"),
+    ("/trend-inativo", "trend", "Trend inativo", "shield-slash"),
     ("/relatorios", "relatorios", "Relatórios", "pie-chart"),
     ("/historico", "historico", "Histórico", "clock-history"),
     ("/configuracao", "configuracao", "Configuração", "gear"),

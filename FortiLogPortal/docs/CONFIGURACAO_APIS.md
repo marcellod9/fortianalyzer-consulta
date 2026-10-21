@@ -56,7 +56,7 @@ dos campos `latitude`/`longitude` do dispositivo em `get /dvmdb/adom/{adom}/devi
 `config system global` > `gui-device-latitude`/`gui-device-longitude`); sem eles, o firewall aparece no centro do Brasil.
 O FortiAnalyzer pode levar alguns minutos para receber e indexar os logs, então o mapa mostra o que já chegou nele.
 
-A sub-aba **Trend inativo** junta duas fontes. Do FortiAnalyzer vêm as máquinas internas que passaram pelo firewall
+A aba **Trend inativo** junta duas fontes. Do FortiAnalyzer vêm as máquinas internas que passaram pelo firewall
 no período (FortiView `top-sources`; se a versão não tiver essa visão, os 5000 logs de tráfego mais recentes), com
 `srcname`, `srcmac`, `user`, `osname` e `srcintf` da identificação de dispositivos do FortiGate. Do Vision One vem o
 inventário `GET /v3.0/endpointSecurity/endpoints` (campos `endpointName`, `lastUsedIp`, `ipAddresses`,

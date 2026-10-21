@@ -1,4 +1,4 @@
-// Ameaças > Trend inativo: máquinas vistas no firewall da unidade com o agente Trend desligado, sem comunicação ou sem Trend.
+// Trend inativo: máquinas vistas no firewall da unidade com o agente Trend desligado, sem comunicação ou sem Trend.
 window.FLP = window.FLP || {};
 FLP.threatsTrend = (() => {
   const esc = FLP.esc;
@@ -125,12 +125,10 @@ FLP.threatsTrend = (() => {
     finally { FLP.busy(btn, false); }
   }
 
-  function init() {
-    document.getElementById("tabTrend").addEventListener("shown.bs.tab", async () => {
-      if (!picker) { picker = FLP.devicePicker(document.getElementById("trendDevices"), document.getElementById("adom")); await picker.load(); }
-    });
+  async function init(defaultAdom) {
     document.getElementById("trendForm").addEventListener("submit", (ev) => { ev.preventDefault(); run(false); });
     document.getElementById("trendRefresh").addEventListener("click", () => run(true));
+    picker = await FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("trendDevices"), defaultAdom);
   }
 
   return { init, _last: () => last };

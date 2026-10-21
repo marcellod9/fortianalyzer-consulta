@@ -1,4 +1,4 @@
-"""Ameaças > Trend inativo: máquinas do firewall cruzadas com o inventário de endpoints do Vision One."""
+"""Trend inativo: máquinas do firewall cruzadas com o inventário de endpoints do Vision One."""
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient

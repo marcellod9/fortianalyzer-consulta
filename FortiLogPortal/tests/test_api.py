@@ -14,7 +14,7 @@ def client():
         yield c
 
 
-@pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/historico", "/configuracao"])
+@pytest.mark.parametrize("path", ["/", "/logs", "/reputacao", "/ameacas", "/trend-inativo", "/historico", "/configuracao"])
 def test_pages_render(client, path):
     r = client.get(path)
     assert r.status_code == 200 and "Radar Marista" in r.text
