@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import auth, dashboard, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
+from ..services import auth, dashboard, fortigate, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -41,9 +41,11 @@ def test_integration(target: str):
             return {"ok": True, "detalhe": faz().status()}
         if target == "v1":
             return {"ok": True, "detalhe": v1().connectivity()}
-    except (FazError, V1Error) as e:
+        if target == "fortiguard":
+            return {"ok": True, "detalhe": fortigate.test_lookup()}
+    except (FazError, V1Error, fortigate.FgtError) as e:
         return {"ok": False, "erro": str(e)}
-    raise HTTPException(404, "Use faz ou v1")
+    raise HTTPException(404, "Use faz, v1 ou fortiguard")
 
 
 @router.get("/app-log", dependencies=ADMIN)

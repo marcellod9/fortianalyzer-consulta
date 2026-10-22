@@ -15,6 +15,7 @@ import requests
 
 from .. import database
 from ..config import settings
+from .telemetry import timed
 
 TIMEOUT = 15
 # campos de texto com o nome da categoria (os nomes variam entre versões do FortiOS)
@@ -71,12 +72,25 @@ def parse_rating(data: dict) -> dict:
     return {"categoria": None, "categoria_id": None}
 
 
+def test_lookup(host: str = "www.fortinet.com") -> dict:
+    """Teste da tela Configuração: consulta um site conhecido pelo caminho em uso, sem cache."""
+    if configured():
+        r = rating_lookup(host)
+        return {"site": host, "categoria": r["categoria"], "categoria_id": r["categoria_id"], "via": f"FortiGate direto ({settings.fgt_url})"}
+    if not settings.faz_configured:
+        raise FgtError("Nem o FortiAnalyzer nem um FortiGate (FGT_URL e FGT_API_TOKEN) estão configurados.")
+    database.cache_delete(PROXY_OFF_KEY)
+    r = rating_via_faz(host)
+    return {"site": host, "categoria": r["categoria"], "categoria_id": r["categoria_id"], "via": r["via"]}
+
+
 def rating_lookup(host: str, session: requests.Session | None = None) -> dict:
     http = session or requests
     try:
-        resp = http.get(f"{settings.fgt_url}/api/v2/monitor/utm/rating-lookup", params={"url": host},
-                        headers={"Authorization": f"Bearer {settings.fgt_token}"},
-                        verify=settings.fgt_verify, timeout=TIMEOUT)
+        with timed("fortigate", "monitor/utm/rating-lookup"):
+            resp = http.get(f"{settings.fgt_url}/api/v2/monitor/utm/rating-lookup", params={"url": host},
+                            headers={"Authorization": f"Bearer {settings.fgt_token}"},
+                            verify=settings.fgt_verify, timeout=TIMEOUT)
     except requests.exceptions.SSLError as e:
         raise FgtError("Falha de certificado TLS ao conectar no FortiGate. Ajuste FGT_VERIFY_TLS.") from e
     except requests.exceptions.RequestException as e:

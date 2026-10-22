@@ -94,3 +94,12 @@ def test_faz_proxy_unwraps_device_response():
             assert params["data"]["target"] == ["adom/root/device/fw1"]
             return [{"target": "fw1", "status": {"code": 0}, "response": {"results": {"category": "Shopping"}}}]
     assert C().proxy_fortigate("root", "fw1", "/api/v2/monitor/utm/rating-lookup?url=x")["results"]["category"] == "Shopping"
+
+
+def test_config_test_button_uses_direct_fortigate(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    monkeypatch.setattr(fortigate, "configured", lambda: True)
+    monkeypatch.setattr(fortigate, "rating_lookup", lambda host: {"categoria": "Information Technology", "categoria_id": 52})
+    r = TestClient(app).post("/api/status/test/fortiguard", headers={"X-FLP-Request": "1"}).json()
+    assert r["ok"] and r["detalhe"]["categoria"] == "Information Technology" and "direto" in r["detalhe"]["via"]
