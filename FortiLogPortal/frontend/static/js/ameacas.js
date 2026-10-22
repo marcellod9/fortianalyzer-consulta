@@ -7,6 +7,10 @@ FLP.threats = (() => {
   const SEV = { critical: ["Crítica", "text-bg-danger"], high: ["Alta", "sev-high"], medium: ["Média", "text-bg-warning"],
                 low: ["Baixa", "text-bg-secondary"], info: ["Informativa", "text-bg-light border"], information: ["Informativa", "text-bg-light border"] };
   const sevBadge = (s) => { const [t, c] = SEV[s] || ["-", "text-bg-light border"]; return `<span class="badge ${c}">${t}</span>`; };
+  // ordem do nível ao ordenar a tabela: Crítica > Alta > Média > Baixa > Informativa
+  const SEV_RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1, information: 1 };
+  const sevCell = (s) => `<td data-v="${SEV_RANK[s] || 0}">${sevBadge(s)}</td>`;
+  const dateCell = (v) => `<td class="text-nowrap" data-v="${esc(v || "")}">${fmtDate(v)}</td>`;
   let last = null, canReports = false;
 
   function machineCell(ip, name) {
@@ -30,17 +34,18 @@ FLP.threats = (() => {
         <td>${h.ameacas.map((t) => `<span class="badge text-bg-dark me-1">${esc(t)}</span>`).join("")}
             ${h.dominios.length ? `<div class="small text-body-secondary text-break">${esc(h.dominios.join(", "))}</div>` : ""}
             ${!h.ameacas.length && !h.dominios.length ? `<span class="small">${esc(h.assunto)}</span>` : ""}</td>
-        <td>${sevBadge(h.pior)}</td><td class="text-end">${num(h.alertas)}</td><td class="text-nowrap">${fmtDate(h.ultimo)}</td>
+        ${sevCell(h.pior)}<td class="text-end">${num(h.alertas)}</td>${dateCell(h.ultimo)}
         <td class="small">${esc(h.regras.join(", "))}<div class="text-body-secondary">${esc(h.firewall)}</div></td>
-        <td>${h.reconhecido ? `<span class="badge text-bg-success">ACK</span>` : `<span class="badge text-bg-danger">pendente</span>`}</td>
+        <td data-v="${h.reconhecido ? 1 : 0}">${h.reconhecido ? `<span class="badge text-bg-success">ACK</span>` : `<span class="badge text-bg-danger">pendente</span>`}</td>
         <td>${actions(h.ip, h.maquina, h.usuarios[0])}</td></tr>
         <tr class="d-none v1-row"><td colspan="9"><div class="v1-box"></div></td></tr>`).join("");
     return `<div class="card mb-3 border-danger-subtle"><div class="card-body">
       <h6 class="mb-1"><i class="bi bi-shield-exclamation text-danger"></i> Máquinas comprometidas (IOC)</h6>
       <div class="small text-body-secondary mb-2">Alertas de IOC e botnet do Event Monitor do FortiAnalyzer (${num(c.alertas)} alerta(s)${c.mais ? `, lidos os ${num(c.alertas_lidos)} mais recentes` : ""}).
         Sem ACK aparecem primeiro: confira a máquina no Vision One e acione a Segurança.</div>
-      ${c.maquinas.length ? `<div class="table-responsive"><table class="table table-sm small align-middle mb-0">
-        <thead><tr><th>Máquina</th><th>Usuário</th><th>Ameaça / destino</th><th>Severidade</th><th class="text-end">Alertas</th><th>Último</th><th>Regra / firewall</th><th>ACK</th><th></th></tr></thead>
+      ${c.maquinas.length ? `<div class="table-responsive"><table class="table table-sm small align-middle mb-0" id="ioc">
+        <thead><tr><th data-sort="text">Máquina</th><th data-sort="text">Usuário</th><th data-sort="text">Ameaça / destino</th><th data-sort="sev">Severidade</th>
+        <th class="text-end" data-sort="num">Alertas</th><th data-sort="date">Último</th><th data-sort="text">Regra / firewall</th><th data-sort="num" title="Clique para ordenar (pendentes primeiro)">ACK</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div>`
         : `<div class="alert alert-success small mb-0"><i class="bi bi-check-circle"></i> Nenhuma máquina com alerta de IOC ou botnet no período.</div>`}
     </div></div>`;
@@ -52,8 +57,8 @@ FLP.threats = (() => {
     const max = Math.max(1, ...t.linhas.map((x) => x.pontuacao));
     const rows = t.linhas.map((x, i) => `<tr><td class="text-body-secondary">${i + 1}</td><td class="text-break">${esc(x.ameaca)}
         ${x.cve ? `<div class="small text-body-secondary">${esc(x.cve)}</div>` : ""}</td>
-      <td>${esc(x.categoria)}<div class="small text-body-secondary">${esc(x.tipo_log)}</div></td><td>${sevBadge(x.severidade)}</td>
-      <td style="min-width:9rem"><div class="d-flex align-items-center gap-2"><div class="tt-bar flex-grow-1" title="Pontuação ${num(x.pontuacao)}">
+      <td>${esc(x.categoria)}<div class="small text-body-secondary">${esc(x.tipo_log)}</div></td>${sevCell(x.severidade)}
+      <td style="min-width:9rem" data-v="${x.pontuacao}"><div class="d-flex align-items-center gap-2"><div class="tt-bar flex-grow-1" title="Pontuação ${num(x.pontuacao)}">
         <span style="width:${(100 * x.pontuacao) / max}%"></span></div><span class="text-end" style="min-width:3.5rem">${num(x.pontuacao)}</span></div></td>
       <td class="text-end">${num(x.incidentes)}</td><td class="text-end">${num(x.bloqueados)}</td>
       <td class="text-end ${x.permitidos ? "text-danger fw-semibold" : ""}">${num(x.permitidos)}</td></tr>`).join("");
@@ -63,8 +68,9 @@ FLP.threats = (() => {
       <div class="small text-body-secondary mb-2">A mesma lista de FortiView &gt; Threats &gt; Top Threats, ordenada pela pontuação de ameaça do FortiAnalyzer.
         Incidentes permitidos passaram pelo firewall.</div>
       <div class="table-responsive" style="max-height:440px"><table class="table table-sm small align-middle mb-0" id="top">
-        <thead class="sticky-top"><tr><th>#</th><th>Ameaça</th><th>Categoria</th><th>Nível</th><th>Pontuação</th><th class="text-end">Incidentes</th>
-        <th class="text-end">Bloqueados</th><th class="text-end">Permitidos</th></tr></thead><tbody>${rows ||
+        <thead class="sticky-top"><tr><th data-sort="num">#</th><th data-sort="text">Ameaça</th><th data-sort="text">Categoria</th><th data-sort="sev">Nível</th>
+        <th data-sort="num">Pontuação</th><th class="text-end" data-sort="num">Incidentes</th>
+        <th class="text-end" data-sort="num">Bloqueados</th><th class="text-end" data-sort="num">Permitidos</th></tr></thead><tbody>${rows ||
         `<tr><td colspan="8" class="text-body-secondary">O FortiView não trouxe ameaças no período.</td></tr>`}</tbody></table></div>
     </div></div>`;
   }
@@ -134,16 +140,17 @@ FLP.threats = (() => {
   }
 
   function threatsHtml(t) {
-    const rows = t.linhas.map((x) => `<tr><td class="text-break">${esc(x.ameaca)}</td><td>${esc(x.tipo)}</td><td>${sevBadge(x.severidade)}</td>
+    const rows = t.linhas.map((x) => `<tr><td class="text-break">${esc(x.ameaca)}</td><td>${esc(x.tipo)}</td>${sevCell(x.severidade)}
       <td class="text-end">${num(x.eventos)}</td><td class="text-end ${x.permitidos ? "text-danger fw-semibold" : ""}">${num(x.permitidos)}</td>
-      <td class="text-end">${num(x.maquinas)}</td><td class="text-end">${num(x.usuarios)}</td><td class="text-nowrap">${fmtDate(x.ultimo)}</td></tr>`).join("");
+      <td class="text-end">${num(x.maquinas)}</td><td class="text-end">${num(x.usuarios)}</td>${dateCell(x.ultimo)}</tr>`).join("");
     return `<div class="card mb-3"><div class="card-body">
       <div class="d-flex align-items-center gap-2 mb-1"><h6 class="mb-0 me-auto"><i class="bi bi-list-ol"></i> Ameaças nos logs</h6>
         <input class="form-control form-control-sm" style="max-width:16rem" data-search="thr" placeholder="Filtrar ameaça ou tipo"></div>
       <div class="small text-body-secondary mb-2">${num(t.total)} ameaça(s) diferente(s). As que passaram pelo firewall (não bloqueadas) vêm primeiro.</div>
       <div class="table-responsive" style="max-height:420px"><table class="table table-sm small align-middle mb-0" id="thr">
-        <thead class="sticky-top"><tr><th>Ameaça</th><th>Tipo</th><th>Severidade</th><th class="text-end">Eventos</th><th class="text-end">Não bloqueados</th>
-        <th class="text-end">Máquinas</th><th class="text-end">Usuários</th><th>Último</th></tr></thead><tbody>${rows ||
+        <thead class="sticky-top"><tr><th data-sort="text">Ameaça</th><th data-sort="text">Tipo</th><th data-sort="sev">Severidade</th>
+        <th class="text-end" data-sort="num">Eventos</th><th class="text-end" data-sort="num">Não bloqueados</th>
+        <th class="text-end" data-sort="num">Máquinas</th><th class="text-end" data-sort="num">Usuários</th><th data-sort="date">Último</th></tr></thead><tbody>${rows ||
         `<tr><td colspan="8" class="text-body-secondary">Nenhuma ameaça nos logs do período.</td></tr>`}</tbody></table></div>
     </div></div>`;
   }
@@ -151,16 +158,17 @@ FLP.threats = (() => {
   function hostsHtml(hosts) {
     const rows = hosts.map((h) => `<tr><td>${machineCell(h.ip, h.maquina)}</td><td>${esc(h.usuarios.join(", ") || "-")}</td>
       <td class="small text-break">${esc(h.principais.join(" · "))}${h.qtd_ameacas > h.principais.length ? ` <span class="text-body-secondary">+${h.qtd_ameacas - h.principais.length}</span>` : ""}</td>
-      <td>${sevBadge(h.pior)}</td><td class="text-end">${num(h.eventos)}</td><td class="text-end ${h.permitidos ? "text-danger fw-semibold" : ""}">${num(h.permitidos)}</td>
-      <td class="text-nowrap">${fmtDate(h.ultimo)}</td><td>${actions(h.ip, h.maquina, h.usuarios[0])}</td></tr>
+      ${sevCell(h.pior)}<td class="text-end">${num(h.eventos)}</td><td class="text-end ${h.permitidos ? "text-danger fw-semibold" : ""}">${num(h.permitidos)}</td>
+      ${dateCell(h.ultimo)}<td>${actions(h.ip, h.maquina, h.usuarios[0])}</td></tr>
       <tr class="d-none v1-row"><td colspan="8"><div class="v1-box"></div></td></tr>`).join("");
     return `<div class="card mb-3"><div class="card-body">
       <div class="d-flex align-items-center gap-2 mb-1"><h6 class="mb-0 me-auto"><i class="bi bi-pc-display-horizontal"></i> Máquinas afetadas</h6>
         <input class="form-control form-control-sm" style="max-width:16rem" data-search="hst" placeholder="Filtrar máquina, IP ou usuário"></div>
       <div class="small text-body-secondary mb-2">Máquina de origem da ameaça (no IPS de entrada, a máquina atacada). Quem teve ameaça não bloqueada vem primeiro.</div>
       <div class="table-responsive" style="max-height:420px"><table class="table table-sm small align-middle mb-0" id="hst">
-        <thead class="sticky-top"><tr><th>Máquina</th><th>Usuário</th><th>Principais ameaças</th><th>Pior severidade</th><th class="text-end">Eventos</th>
-        <th class="text-end">Não bloqueados</th><th>Último</th><th></th></tr></thead><tbody>${rows ||
+        <thead class="sticky-top"><tr><th data-sort="text">Máquina</th><th data-sort="text">Usuário</th><th data-sort="text">Principais ameaças</th>
+        <th data-sort="sev">Pior severidade</th><th class="text-end" data-sort="num">Eventos</th>
+        <th class="text-end" data-sort="num">Não bloqueados</th><th data-sort="date">Último</th><th></th></tr></thead><tbody>${rows ||
         `<tr><td colspan="8" class="text-body-secondary">Nenhuma máquina afetada no período.</td></tr>`}</tbody></table></div>
     </div></div>`;
   }
@@ -210,6 +218,7 @@ FLP.threats = (() => {
       ${threatsHtml(d.ameacas)}
       ${hostsHtml(d.maquinas)}`;
     bind(box);
+    ["ioc", "top", "thr", "hst"].forEach((id) => FLP.sortableTable(document.getElementById(id)));
     box.querySelectorAll("[data-table]").forEach((b) => b.addEventListener("click", () => {
       const t = document.getElementById(`rt${b.dataset.table}`);
       t.classList.toggle("d-none");

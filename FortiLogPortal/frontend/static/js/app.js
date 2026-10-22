@@ -845,6 +845,37 @@ const FLP = (() => {
     }
   }
 
+  // Tabela ordenável pelo cabeçalho: <th data-sort="text|num|sev|date">. O valor vem de data-v na célula ou do texto.
+  // Nível/severidade e números começam do maior (Crítica, Alta, Média, Baixa); texto começa de A a Z. Uma linha
+  // de detalhe logo abaixo (tr.v1-row) acompanha a linha dela.
+  function sortableTable(table) {
+    if (!table) return;
+    const value = (tr, i, type) => {
+      const td = tr.children[i];
+      const raw = td ? (td.dataset.v ?? td.textContent.trim()) : "";
+      if (type === "num" || type === "sev") return Number(String(raw).replace(/[^\d,-]/g, "").replace(",", ".")) || 0;
+      return String(raw).toLowerCase();
+    };
+    table.querySelectorAll("th[data-sort]").forEach((th) => {
+      th.classList.add("sortable");
+      th.title = th.title || "Clique para ordenar";
+      th.addEventListener("click", () => {
+        const i = [...th.parentNode.children].indexOf(th), type = th.dataset.sort;
+        const desc = th.dataset.dir ? th.dataset.dir !== "desc" : type !== "text";
+        table.querySelectorAll("th[data-sort]").forEach((x) => { delete x.dataset.dir; });
+        th.dataset.dir = desc ? "desc" : "asc";
+        const body = table.tBodies[0];
+        const groups = [...body.children].filter((tr) => !tr.classList.contains("v1-row") && tr.children.length > 1)
+          .map((tr) => [tr, tr.nextElementSibling?.classList.contains("v1-row") ? tr.nextElementSibling : null]);
+        groups.sort((a, b) => {
+          const x = value(a[0], i, type), y = value(b[0], i, type);
+          return (x < y ? -1 : x > y ? 1 : 0) * (desc ? -1 : 1);
+        });
+        groups.forEach(([tr, extra]) => { body.appendChild(tr); if (extra) body.appendChild(extra); });
+      });
+    });
+  }
+
   function exportButtons(container, resultId) {
     if (!container) return;
     container.innerHTML = resultId ? ["csv", "xlsx", "pdf"].map((f) =>
@@ -1066,5 +1097,5 @@ const FLP = (() => {
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
   return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
-           renderLogTable, exportButtons, renderReputation, sandboxFlow, sandboxQuotaText, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
+           renderLogTable, exportButtons, sortableTable, renderReputation, sandboxFlow, sandboxQuotaText, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();
