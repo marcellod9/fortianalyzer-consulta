@@ -38,9 +38,9 @@ o usuário do Windows que iniciou o servidor.
    começa com os últimos 5 minutos e os eventos novos entram no topo, destacados. Gere um acesso
    bloqueado de teste e veja se ele aparece. *Pausar* para a atualização e libera a exportação.
 5. **Logs, outros tipos**: repita com Filtro web e Filtro DNS para ver bloqueios de navegação.
-6. **Reputação**: consulte `8.8.8.8`, `google.com`, `https://google.com` e um indicador que
-   esteja na lista de Suspicious Objects do tenant. Para sites acessados nas últimas 24 h, a linha
-   *FortiGuard* mostra a categoria do site e ela entra no veredito (ex.: Phishing vira Malicioso).
+6. **Reputação**: consulte `google.com`, `https://google.com` e um site novo (Unrated). A linha
+   *FortiGuard* mostra a categoria do site e ela entra no veredito (ex.: Phishing vira Malicioso);
+   um IP é recusado, porque a aba consulta só sites.
 7. **Relatórios**: gere o *Geral (todos)* do último dia e depois *Por usuário* com o login de
    alguém da equipe. Confira os totais com o FortiAnalyzer (Log View, mesmo período e filtro) e
    baixe o PDF e o Excel. Se aparecer o aviso de amostra, o período tem mais eventos do que

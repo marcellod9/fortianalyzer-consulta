@@ -48,8 +48,9 @@ def test_logs_search_validation_message(client):
 
 
 def test_reputation_history_dashboard(client):
-    r = client.post("/api/v1/reputation", json={"indicator": "45.33.32.156"}, headers=H)
-    assert r.status_code == 200 and r.json()["reputacao"] == "Suspeito"
+    r = client.post("/api/v1/reputation", json={"indicator": "malware-test.example"}, headers=H)
+    assert r.status_code == 200 and r.json()["reputacao"] == "Malicioso"
+    assert client.post("/api/v1/reputation", json={"indicator": "45.33.32.156"}, headers=H).status_code == 400
     assert client.post("/api/v1/reputation", json={"indicator": "x y"}).status_code == 400
     hist = client.get("/api/history").json()
     assert {"logs", "reputacao"} <= {h["query_type"] for h in hist}
@@ -59,7 +60,6 @@ def test_reputation_history_dashboard(client):
     assert dash["sites_mais_bloqueados"] and dash["regras_mais_acionadas"]
     local = client.get("/api/dashboard/local").json()
     assert local["estatisticas"]["total_consultas"] > 0
-    assert local["visionone"]["ips_maliciosos"][0]["indicator"] == "45.33.32.156"
 
 
 def test_status_never_exposes_tokens(client):

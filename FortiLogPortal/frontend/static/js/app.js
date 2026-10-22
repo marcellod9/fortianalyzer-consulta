@@ -104,7 +104,7 @@ const FLP = (() => {
   }
 
   function verdictClass(rep) {
-    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Confiável (exceção)": "success", "Não foi possível consultar": "warning", "Inconclusivo": "warning", "Sem risco detectado (Sandbox)": "success", "Sem risco conhecido": "success" }[rep] || "secondary";
+    return { "Malicioso": "danger", "Suspeito": "warning", "Baixo risco": "info", "Sem risco detectado (Sandbox)": "success", "Sem risco conhecido": "success", "Não classificado (FortiGuard)": "warning", "Sem categoria encontrada": "secondary" }[rep] || "secondary";
   }
   function riskColor(score) {
     if (score >= 80) return "var(--bs-danger)";
@@ -481,7 +481,7 @@ const FLP = (() => {
       `Motivo: ${r.motivo || "-"}`,
       `Regra: ${r.regra || "-"}${r.politica ? ` - Perfil: ${r.politica}` : ""}`,
       `Firewall: ${r.firewall || "-"}`,
-      ...Object.values(r._rep || {}).map((rep) => `Reputação (Vision One) de ${rep.indicador}: ${rep.reputacao} (score ${rep.risk_score}/100)`),
+      ...Object.values(r._rep || {}).map((rep) => `Reputação de ${rep.indicador}: ${rep.reputacao} (score ${rep.risk_score}/100)`),
       ...(r._maq ? [machineTicketLine(r._maq)] : []),
     ].join("\n");
   }
@@ -498,7 +498,7 @@ const FLP = (() => {
   function showLogModal(r) {
     const m = document.getElementById("logModal");
     const sit = SITUATION[situationOf(r)];
-    const repTargets = [r.site, r.ip_destino].filter((v, i, a) => v && a.indexOf(v) === i);
+    const repTargets = r.site ? [r.site] : [];  // a reputação consulta só sites (URL ou domínio), não IP
     m.querySelector(".modal-title").textContent = "Detalhes do evento";
     m.querySelector(".modal-body").innerHTML = `
       <div class="alert alert-${sit.cls} d-flex gap-3 align-items-start mb-3">
@@ -538,14 +538,14 @@ const FLP = (() => {
     bootstrap.Modal.getOrCreateInstance(m).show();
   }
 
-  // ---- reputação (Vision One) dentro da janela do evento -----------------------------
+  // ---- reputação do site dentro da janela do evento -----------------------------
   async function reputationInModal(m, r, indicator, btn) {
     const box = m.querySelector("#logRep"), oldSb = m.querySelector("#logSandbox");
     // nova consulta: uma análise do Sandbox ainda em andamento para outro indicador deixa de escrever aqui
     const sbBox = oldSb.cloneNode(false); oldSb.replaceWith(sbBox);
     const token = box.dataset.token = String(Math.random());
     busy(btn, true);
-    box.innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span> Consultando ${esc(indicator)} no Vision One...</div>`;
+    box.innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span> Consultando a reputação de ${esc(indicator)}...</div>`;
     const show = (rep) => {
       if (!box.isConnected || box.dataset.token !== token) return;
       (r._rep = r._rep || {})[rep.indicador] = rep;  // entra no "Copiar resumo para o chamado"
@@ -558,7 +558,7 @@ const FLP = (() => {
     try {
       show(await api("/api/v1/reputation", { method: "POST", body: { indicator, type: "auto", ...(cat ? { categoria_fortiguard: cat } : {}) } }));
     } catch (e) {
-      if (box.isConnected && box.dataset.token === token) box.innerHTML = `<div class="alert alert-danger small mb-0">Vision One: ${esc(e.message)}</div>`;
+      if (box.isConnected && box.dataset.token === token) box.innerHTML = `<div class="alert alert-danger small mb-0">Reputação: ${esc(e.message)}</div>`;
     } finally {
       busy(btn, false);
       // o botão desabilitado durante a consulta perde o foco; devolve à janela para o Esc continuar fechando
@@ -680,7 +680,7 @@ const FLP = (() => {
       return `<div class="recat-guide recat-unrated mt-2"><div class="fw-bold mb-1"><i class="bi bi-exclamation-diamond-fill"></i>
         Site sem categoria no FortiGuard (${esc(fg.categoria)}): solicite a classificação</div>
         <div class="small mb-2">Sites "Unrated" costumam ser bloqueados ou tratados com cautela pela política. O usuário ou o analista
-          <b>pode e deve</b> pedir ao FortiGuard que classifique o site, depois de conferir que ele é seguro (veja o resultado do Vision One acima).
+          <b>pode e deve</b> pedir ao FortiGuard que classifique o site, depois de conferir que ele é seguro (veja a reputação acima e, se precisar, a análise no Sandbox).
           Quando a categoria nova for publicada, todos os FortiGates passam a usá-la, e o site fica liberado se essa categoria for permitida pela política.</div>
         ${warn}${how}${buttons("warning")}</div>`;
     }
@@ -732,7 +732,7 @@ const FLP = (() => {
         </dl>
         ${fg?.categoria ? recatGuide(r, fg) : ""}
         ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
-        <details class="mt-2"><summary class="small">Detalhes técnicos (Suspicious Objects, detecções, alertas)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
+        <details class="mt-2"><summary class="small">Detalhes técnicos (Sandbox)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
       </div></div>`;
   }
 

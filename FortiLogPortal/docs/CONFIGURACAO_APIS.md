@@ -176,16 +176,14 @@ A URL da API depende da região do tenant. `portal.xdr.trendmicro.com` correspon
 
 1. No console: **Administration > User Roles**: crie uma função (ex.: `RadarMarista-Leitura`)
    apenas com permissões de visualização de:
-   - *Threat Intelligence > Suspicious Object Management* (View);
-   - *Search* (View) — para detecções;
-   - *Workbench* (View) — para alertas;
+   - *Workbench* (View) — para os alertas da *Máquina no Vision One*;
    - *Threat Intelligence > Sandbox Analysis* (View, filter, and search e Submit object) — só se for usar a análise de URL;
    - *Endpoint Inventory* (View) — para a *Máquina no Vision One* (agente Trend da máquina de origem).
 2. **Administration > API Keys > Add API Key**: escolha a função acima e uma validade.
 3. Copie a chave para `V1_API_TOKEN`.
 
 Os nomes exatos das permissões podem variar conforme a versão do console. Se uma fonte
-responder HTTP 403, a tela de reputação mostra qual fonte falhou e qual permissão habilitar; ajuste a função.
+responder HTTP 403, a tela mostra qual fonte falhou e qual permissão habilitar; ajuste a função.
 A função usada é a escolhida na chave de API (*Administration > API Keys*), não a do seu usuário.
 
 ### Endpoints usados
@@ -193,10 +191,7 @@ A função usada é a escolhida na chave de API (*Administration > API Keys*), n
 | Endpoint | Uso no portal |
 |---|---|
 | `GET /v3.0/healthcheck/connectivity` | teste de conexão |
-| `GET /v3.0/threatintel/suspiciousObjects` | IOC marcados como suspeitos (risco, ação, validade) |
-| `GET /v3.0/threatintel/suspiciousObjectExceptions` | objetos marcados como confiáveis |
-| `GET /v3.0/search/detections` + header `TMV1-Query` | detecções do indicador no ambiente |
-| `GET /v3.0/workbench/alerts` | alertas que citam o indicador e alertas da máquina ou do usuário (entidades do *impact scope*) |
+| `GET /v3.0/workbench/alerts` | alertas da máquina ou do usuário (entidades do *impact scope*) |
 | `GET /v3.0/eiqs/endpoints` + header `TMV1-Query` | procura a máquina pelo IP ou nome (`ip eq '10.0.0.1' or endpointName eq 'PC-01'`) |
 | `GET /v3.0/endpointSecurity/endpoints/{id}` | situação do agente: ligado, último contato, sensor XDR, isolamento |
 | `GET /v3.0/endpointSecurity/endpoints` | inventário de endpoints (`/api/v1/endpoints`) |
@@ -205,25 +200,20 @@ A função usada é a escolhida na chave de API (*Administration > API Keys*), n
 
 ### Como a reputação é calculada
 
-A API pública v3.0 **não tem um endpoint de "reputação global"** para consultar um IP ou domínio
-avulso. O portal consolida as fontes oficiais acima:
+Desde 2026-10-22 a aba **Reputação** consulta só sites (URL ou domínio) e não cruza mais o indicador com os IOC
+do Vision One (Suspicious Objects, exceções, detecções e Workbench). O veredito vem da categoria do FortiGuard
+(seção 1b) e, quando usado, do Sandbox:
 
-| Campo exibido | Origem |
+| Reputação | Quando |
 |---|---|
-| Reputação | Malicioso (score ≥ 80), Suspeito (≥ 50), Baixo risco, Confiável (exceção) ou Sem registro |
-| Risk Score | maior valor entre: risco do Suspicious Object (high 90, medium 65, low 35), score do alerta do Workbench, detecções (≥ 55) e Sandbox |
-| Categoria | descrição do Suspicious Object |
-| Severidade | risco do Suspicious Object ou severidade do alerta |
-| Tipo da ameaça | modelos de alerta, nomes de detecção, tipos do Sandbox |
-| IOC relacionados | outros indicadores dos alertas e do Sandbox |
-| Última análise | data mais recente entre as fontes |
-| Nível de confiança | Alta (Suspicious Object/Sandbox), Média (alerta/detecção), Baixa (sem registro) |
-| Fonte | fontes que retornaram ocorrência |
-| Recomendações | orientação do portal conforme a classificação |
+| Malicioso / Suspeito | categoria de risco do FortiGuard (ex.: Phishing, Malicious Websites) ou risco alto/médio no Sandbox |
+| Baixo risco | risco baixo no Sandbox |
+| Sem risco detectado (Sandbox) | o Sandbox analisou a URL e não achou comportamento malicioso |
+| Sem risco conhecido | categoria comum do FortiGuard (ex.: Shopping, Education) |
+| Não classificado (FortiGuard) | o FortiGuard devolveu Unrated: a tela orienta a pedir a classificação |
+| Sem categoria encontrada | o FortiGuard não respondeu e o site não aparece nos logs |
 
-"Sem registro" significa que o indicador não aparece no tenant no período (`V1_LOOKBACK_DAYS`),
-não que é seguro. Para URLs, o Sandbox dá uma análise própria (`V1_SANDBOX_ENABLED=true`;
-consome a cota diária de envios do tenant).
+Para URLs, o Sandbox dá uma análise própria (`V1_SANDBOX_ENABLED=true`; consome a cota diária de envios do tenant).
 
 **Economia do Sandbox.** Pela tabela de créditos da Trend, cada envio ao Sandbox (manual ou pela
 API) custa 2 créditos; consultar o andamento e o resultado não custa. Por isso o portal guarda cada
@@ -233,19 +223,6 @@ oferece *Analisar de novo*, que pede confirmação e faz um envio novo. Antes de
 consulta a cota do dia: com cota zerada, o envio não sai; se a chave não tiver permissão para ver a
 cota, o envio segue normalmente. O reaproveitamento vale para quem usa o mesmo portal (o mesmo
 banco); com cada analista rodando o seu, ele é por máquina.
-
-### Consultas de detecções
-
-As consultas usam a sintaxe `campo:"valor"` do header `TMV1-Query`, configuráveis no `.env`:
-
-```
-V1_DETECTION_QUERY_URL=request:"{v}"
-V1_DETECTION_QUERY_DOMAIN=request:"*{v}*"
-V1_DETECTION_QUERY_IP=dst:"{v}" or src:"{v}"
-```
-
-Valide no primeiro uso real: faça a mesma busca na tela *Search* do Vision One (fonte
-*Detections*) e, se o tenant usar outros campos, ajuste as variáveis.
 
 ### Variáveis
 

@@ -16,7 +16,7 @@ FastAPI (backend/app)
         ├── report_export.py   relatório em PDF (gráficos reportlab) e Excel (gráficos openpyxl)
         ├── explain.py         normalização e linguagem simples
         ├── visionone.py       cliente REST v3.0 (requests)       ──HTTPS──▶ Vision One
-        ├── reputation.py      reputação consolidada de IP/domínio/URL (Vision One + categoria do FortiGuard)
+        ├── reputation.py      reputação de sites (URL/domínio): categoria do FortiGuard + Sandbox do Vision One
         ├── dashboard.py       agregações do dashboard
         ├── export.py          CSV / XLSX (openpyxl) / PDF (reportlab)
         └── telemetry.py       tempo de resposta e falhas das integrações
@@ -64,7 +64,7 @@ Credenciais **não** ficam no banco.
 | POST | `/api/faz/diagnose` | `{quem, quem_tipo: auto\|user\|srcname, destino, start, end, adom, devices}`: diagnóstico de acesso |
 | POST | `/api/faz/logs/live` | mesma pesquisa, sem cache, para o tempo real (`?first=true` grava auditoria/histórico) |
 | POST | `/api/faz/logs/store` | guarda as linhas do tempo real para exportar |
-| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain\|ip, sandbox, sandbox_force, categoria_fortiguard}`; com `sandbox`, reaproveita a análise da mesma URL das últimas 24 h, e `sandbox_force` envia de novo |
+| POST | `/api/v1/reputation` | `{indicator, type: auto\|url\|domain, sandbox, sandbox_force, categoria_fortiguard}`; com `sandbox`, reaproveita a análise da mesma URL das últimas 24 h, e `sandbox_force` envia de novo |
 | GET | `/api/v1/sandbox-quota` | cota diária do Sandbox: `{restantes, total, erro}` |
 | GET | `/api/v1/sandbox/{task_id}` | acompanhamento do Sandbox (resultado concluído vem do banco local) |
 | GET | `/api/v1/alerts?days=&severity=&status=` | alertas do Workbench |
@@ -99,5 +99,3 @@ hostname, policy, profile, srcintf, dstintf, action, only_blocked, limit`.
 - `visionone.py` já expõe `workbench_alerts`, `endpoints`, `search_endpoints`, `endpoint_details` e
   Sandbox, base para Alertas, Incidentes/Workbench e Inventário. `machine.py` usa os três primeiros
   para a situação da máquina (os alertas ficam 5 minutos em cache e são filtrados no portal).
-- `reputation.lookup` aceita tipos novos (hash de arquivo) adicionando um ramo em
-  `parse_indicator` e no casamento com Suspicious Objects (`fileSha1`, `fileSha256`).

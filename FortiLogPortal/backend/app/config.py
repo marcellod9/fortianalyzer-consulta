@@ -68,9 +68,6 @@ class Settings:
     v1_sandbox_enabled: bool = field(default_factory=lambda: _bool("V1_SANDBOX_ENABLED"))
     # Consultas (sintaxe TMV1-Query, campo:"valor") usadas para achar detecções de um indicador.
     # {v} é substituído pelo indicador validado. Ajuste os campos se o seu tenant usar outros.
-    v1_query_url: str = field(default_factory=lambda: os.getenv("V1_DETECTION_QUERY_URL", 'request:"{v}"'))
-    v1_query_domain: str = field(default_factory=lambda: os.getenv("V1_DETECTION_QUERY_DOMAIN", 'request:"*{v}*"'))
-    v1_query_ip: str = field(default_factory=lambda: os.getenv("V1_DETECTION_QUERY_IP", 'dst:"{v}" or src:"{v}"'))
 
     # ---- Login (SSO Microsoft Entra ID) ----
     # off = sem login (POC local, um usuário); entra = exige login Microsoft com MFA (Acesso Condicional)
