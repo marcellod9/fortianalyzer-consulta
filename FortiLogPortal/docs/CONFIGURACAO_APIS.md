@@ -124,13 +124,20 @@ relativo à pasta FortiLogPortal ou absoluto). Use `false` só em teste.
 
 ---
 
-## 1b. FortiGate (opcional): categoria FortiGuard de qualquer site
+## 1b. Categoria FortiGuard de qualquer site
 
 Sem esta parte, a aba Reputação mostra a categoria FortiGuard só dos sites que aparecem nos logs de filtro web ou DNS
 das últimas 24 h no FortiAnalyzer (campo `catdesc`). Com um FortiGate configurado, o portal pergunta a classificação
 ao FortiGuard pela API REST do FortiOS (`GET /api/v2/monitor/utm/rating-lookup?url=<site>`) e traz a categoria de
 qualquer domínio, mesmo que ninguém o tenha acessado. A resposta fica 1 dia em cache. Se o FortiGate falhar, a
 categoria volta a ser procurada nos logs e a tela avisa.
+
+**Pelo FortiAnalyzer (padrão, sem chave nova):** o portal pede ao FAZ que repasse a consulta a um FortiGate gerenciado
+(`exec /sys/proxy/json`), com o mesmo `FAZ_API_TOKEN`. O FortiGate é `FAZ_RATING_DEVICE` ou o primeiro da ADOM. Se o
+FAZ recusar (perfil sem permissão ou versão sem o proxy), a tela mostra o motivo, o portal usa os logs e só tenta de
+novo depois de 1 hora. Não foi possível confirmar no FAZ 7.4.7 da Marista qual permissão do perfil libera o proxy.
+
+**Direto num FortiGate (alternativa):** se o FAZ não repassar, configure um FortiGate:
 
 1. No FortiGate: **System > Admin Profiles > Create New**: perfil somente leitura (o mínimo é *Security Profile: Read*;
    se a consulta responder 403, inclua *System: Read*).

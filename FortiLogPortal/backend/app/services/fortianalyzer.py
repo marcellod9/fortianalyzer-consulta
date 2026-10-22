@@ -126,6 +126,19 @@ class FazClient:
                         "lat": _coord(d.get("latitude"), 90), "lon": _coord(d.get("longitude"), 180)})
         return sorted(out, key=lambda x: (x["name"] or "").lower())
 
+    # ---- proxy para o FortiGate -------------------------------------------
+    def proxy_fortigate(self, adom: str, device: str, resource: str) -> Any:
+        """Chamada GET à API REST de um FortiGate gerenciado, repassada pelo FortiAnalyzer (exec sys/proxy/json).
+        Devolve o JSON da resposta do FortiGate."""
+        with timed(self.source, f"sys/proxy/json {resource.split('?')[0]}"):
+            data = self.call("exec", "/sys/proxy/json",
+                             data={"target": [f"adom/{adom}/device/{device}"], "action": "get", "resource": resource})
+        item = (data or [{}])[0] if isinstance(data, list) else (data or {})
+        st = item.get("status") or {}
+        if st.get("code", 0) != 0:
+            raise FazError(f"sys/proxy/json: {st.get('message') or 'o FortiGate não respondeu pelo FortiAnalyzer'}")
+        return item.get("response") if "response" in item else item
+
     # ---- busca de logs ----------------------------------------------------
     # Cada tarefa (tid) entrega uma página só: o "add" já leva limit e offset (o FAZ para de procurar quando acha
     # "limit" eventos; sem limit, ele usa o padrão de 100) e o "get" lê essa página. A próxima página é uma busca

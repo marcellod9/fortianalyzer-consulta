@@ -670,7 +670,7 @@ const FLP = (() => {
     let fgRow = "";
     if (fg) {
       const cls = fg.risco === "alto" ? "danger" : fg.risco === "medio" ? "warning" : fg.nao_classificado ? "secondary" : "success";
-      const where = fg.origem === "evento" ? "registrada no log" : fg.origem === "fortiguard" ? "consulta ao FortiGuard"
+      const where = fg.origem === "evento" ? "registrada no log" : fg.origem === "fortiguard" ? `consulta ao FortiGuard${fg.via ? ` (${fg.via})` : ""}`
         : `visto no log de ${shortTime(fg.visto_em)}`;
       fgRow = row("FortiGuard", fg.categoria
         ? `<span class="badge text-bg-${cls}">${esc(fg.categoria)}</span> <span class="text-body-secondary">${esc(

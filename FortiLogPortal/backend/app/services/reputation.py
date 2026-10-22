@@ -175,9 +175,9 @@ def fortiguard_from_fortigate(host: str) -> dict:
     hit = database.cache_get(key)
     if hit is not None:
         return hit
-    r = fortigate.rating_lookup(host)
+    r = fortigate.rating_lookup(host) if fortigate.configured() else fortigate.rating_via_faz(host)
     out = {"categoria": r["categoria"] or f"Categoria {r['categoria_id']}", "categoria_id": r["categoria_id"],
-           "origem": "fortiguard", "visto_em": None, "erro": None}
+           "origem": "fortiguard", "via": r.get("via", "FortiGate"), "visto_em": None, "erro": None}
     database.cache_set(key, out, ttl=FORTIGUARD_RATING_TTL)
     return out
 
@@ -190,7 +190,7 @@ def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool)
     host = host_of(value) if ioc_type == "url" else value
     from . import fortigate
     fgt_err = None
-    if fortigate.configured():
+    if fortigate.configured() or fortigate.proxy_available():
         try:
             return fortiguard_from_fortigate(host)
         except fortigate.FgtError as e:  # sem o FortiGate, a categoria ainda pode vir dos logs

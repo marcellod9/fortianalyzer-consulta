@@ -51,6 +51,7 @@ class Settings:
     faz_search_timeout: int = field(default_factory=lambda: _int("FAZ_SEARCH_TIMEOUT", 120))
     faz_parallel_searches: int = field(default_factory=lambda: _int("FAZ_PARALLEL_SEARCHES", 1))
     # FortiGate opcional para a categoria FortiGuard de qualquer site (rating-lookup)
+    faz_rating_device: str = field(default_factory=lambda: os.getenv("FAZ_RATING_DEVICE", ""))
     fgt_url: str = field(default_factory=lambda: os.getenv("FGT_URL", "").rstrip("/"))
     fgt_token: str = field(default_factory=lambda: os.getenv("FGT_API_TOKEN", ""))
     fgt_verify: object = field(default_factory=lambda: _verify("FGT_VERIFY_TLS"))
