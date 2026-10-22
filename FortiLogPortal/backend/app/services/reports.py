@@ -315,7 +315,7 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         lq.limit = _row_limit(q)  # acima do limite da aba Logs: o relatório só guarda as contagens
         fontes[lt] = {"nome": LOGTYPE_NAMES[lt], "filtro": lq.filter_expr(), "total": 0, "lidos": 0}
         try:
-            res = run_query(lq, use_cache=False, save_cache=False, policy_names=False)
+            res = run_query(lq, use_cache=False, save_cache=False, policy_names=False, keep=True, reuse=use_cache)
         except FazError as e:
             fontes[lt]["erro"] = erros[lt] = str(e)
             continue
@@ -324,7 +324,7 @@ def run_report(q: ReportQuery, use_cache: bool = True) -> dict:
         more = _more(res)
         # com a página cheia o FAZ pode informar só o que achou até ali: o total vira um mínimo
         fontes[lt].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=more,
-                          total_minimo=more and res["total"] <= res["returned"])
+                          guardados=res.get("guardados", 0), total_minimo=more and res["total"] <= res["returned"])
         if more and res["rows"]:
             oldest.append(min(r["data_hora"] for r in res["rows"]))
             if q.tipo != "usuario":  # quem acessou: completa a lista de usuários com buscas extras

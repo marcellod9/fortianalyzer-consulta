@@ -107,7 +107,7 @@ def devices(adom: str):
 @router.post("/faz/logs")
 def search_logs(q: LogQuery, request: Request, cache: bool = True):
     with tracked(request, "logs", q.describe(), q.model_dump(mode="json")) as info:
-        res = run_query(q, use_cache=cache)
+        res = run_query(q, use_cache=cache, keep=True)
         info.update(count=res["returned"], blocked=res["bloqueados"],
                     summary=f"{res['returned']} de {res['total']} eventos ({res['bloqueados']} bloqueados)")
     res["result_id"] = store_result("logs", f"Logs {LOGTYPES[q.logtype]}", explain.COLUMNS, res["rows"],

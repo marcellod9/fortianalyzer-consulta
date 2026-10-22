@@ -173,6 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTimeout(restart); restart = setTimeout(() => startLive(true), 600);
   });
 
+  const fresh = FLP.keptRefresh(document.getElementById("summary"), form);
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (live.on) { startLive(true); return; }  // Pesquisar (ou filtro pelo botão direito) com tempo real ligado
@@ -182,8 +183,8 @@ document.addEventListener("DOMContentLoaded", () => {
     FLP.busy(btn, true);
     try {
       const body = { ...FLP.formData(form), filters: filters.get() };
-      const r = await FLP.api("/api/faz/logs", { method: "POST", body });
-      document.getElementById("summary").innerHTML = `${r.returned} de ${r.total} evento(s) carregado(s)${r.cache ? " · do cache" : ""}` +
+      const r = await FLP.api("/api/faz/logs" + fresh(), { method: "POST", body });
+      document.getElementById("summary").innerHTML = `${r.returned} de ${r.total} evento(s) carregado(s)${r.cache ? " · do cache" : ""}${FLP.keptNote(r.guardados)}` +
         ` <span class="text-body-tertiary" title="Filtro enviado ao FortiAnalyzer">· <code>${FLP.esc(r.filter || "(sem filtro)")}</code></span>`;
       FLP.renderLogTable(document.getElementById("results"), r.rows, { onFilter });
       FLP.exportButtons(document.getElementById("exports"), r.result_id);

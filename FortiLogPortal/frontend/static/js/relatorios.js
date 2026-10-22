@@ -210,7 +210,7 @@ FLP.reports = (() => {
         <h5 class="mb-0">${esc(rep.titulo)}</h5>
         <span class="small text-body-secondary">${esc(rep.periodo.inicio)} a ${esc(rep.periodo.fim)} · firewall: ${esc(rep.firewall || "Todos")} · gerado em ${esc(rep.gerado_em.slice(0, 16))}${rep.cache ? " (cache)" : ""}</span>
       </div>
-      <div class="small text-body-secondary mb-2"><i class="bi bi-database"></i> ${fontes}</div>
+      <div class="small text-body-secondary mb-2"><i class="bi bi-database"></i> ${fontes}${FLP.keptNote(Object.values(rep.fontes).reduce((n, f) => n + (f.guardados || 0), 0))}</div>
       ${rep.aviso_amostra ? `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-info-circle"></i> ${esc(rep.aviso_amostra)}</div>` : ""}
       ${rep.aviso ? `<div class="alert alert-warning small py-2 mb-2">${esc(rep.aviso)}</div>` : ""}
       <div class="row g-2 mb-3">
@@ -265,17 +265,18 @@ FLP.reports = (() => {
     if (qs.get("tipo") && [...tipo.options].some((o) => o.value === qs.get("tipo"))) {
       tipo.value = qs.get("tipo"); syncType(); valor.value = qs.get("valor") || "";
     }
+    const fresh = FLP.keptRefresh(document.getElementById("report"), form);
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       period.refresh();
-      const body = FLP.formData(form);
+      const body = FLP.formData(form), url = "/api/reports" + fresh();
       body.top = +body.top;
       if (body.tipo === "geral") delete body.valor;
       FLP.busy(btn, true);
       document.getElementById("downloads").innerHTML = "";
       document.getElementById("report").innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span>
         Consultando o FortiAnalyzer (filtro web e controle de aplicações) e montando os gráficos...</div>`;
-      try { render(await FLP.api("/api/reports", { method: "POST", body })); }
+      try { render(await FLP.api(url, { method: "POST", body })); }
       catch (e) { document.getElementById("report").innerHTML = ""; FLP.toast(e.message, "danger"); }
       finally { FLP.busy(btn, false); }
     });

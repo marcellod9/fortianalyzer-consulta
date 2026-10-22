@@ -303,6 +303,20 @@ def cache_delete(key: str) -> None:
         c.execute("DELETE FROM cache WHERE key = ?", (key,))
 
 
+def cache_trim(prefix: str, max_bytes: int) -> int:
+    """Apaga as entradas mais antigas com o prefixo até o total caber em max_bytes."""
+    with connect() as c:
+        rows = c.execute("SELECT key, length(value) AS n FROM cache WHERE key LIKE ? ORDER BY created_at DESC",
+                         (prefix + "%",)).fetchall()
+        used, drop = 0, []
+        for r in rows:
+            used += r["n"]
+            if used > max_bytes:
+                drop.append(r["key"])
+        c.executemany("DELETE FROM cache WHERE key = ?", [(k,) for k in drop])
+    return len(drop)
+
+
 def cache_purge(all_entries: bool = False) -> int:
     with connect() as c:
         if all_entries:

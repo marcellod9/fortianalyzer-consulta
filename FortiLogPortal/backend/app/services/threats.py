@@ -16,7 +16,7 @@ import ipaddress
 import json
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -25,16 +25,13 @@ from .. import database
 from ..config import settings
 from .faz_filters import SAFE_NAME, LogQuery
 from .fortianalyzer import FazError, get_client
-from .logsearch import run_query
+from .logsearch import incremental, run_query
 
 CACHE_TTL = 300
 ROWS_PER_SOURCE = 2000   # eventos lidos por fonte (os mais recentes do período)
 TOP_THREATS = 50         # linhas do FortiView Top Threats
 ALERTS_MAX = 4000        # alertas do Event Monitor lidos no período
 TOP = 10
-# Eventos já lidos de cada fonte ficam guardados 7 dias: a próxima consulta só busca no FAZ o trecho novo
-KEEP_TTL = 7 * 24 * 3600
-LATE_LOGS = timedelta(minutes=15)   # o trecho novo começa um pouco antes, pelos logs que chegam atrasados ao FAZ
 
 # id: (nome, tipo de log, categoria (catdesc/appcat contém), severidade padrão)
 SOURCES = {
@@ -445,82 +442,37 @@ def _read_sources(q: ThreatQuery, limit: int, only: list[str] | None = None,
                   keep: bool = False, reuse: bool = False) -> tuple[list[dict], dict[str, dict[str, Any]]]:
     """Eventos de ameaça de cada fonte (IPS, antivírus, filtro web, botnet, DNS), os mais recentes primeiro.
 
-    keep: guarda os eventos lidos por 7 dias; reuse: aproveita o que já estava guardado e só busca o trecho novo.
+    keep: guarda os eventos lidos (logsearch.incremental); reuse: aproveita o guardado e só busca o trecho novo.
     """
     rows: list[dict] = []
     fontes: dict[str, dict[str, Any]] = {}
     for sid, (nome, lt, cat, _sev) in SOURCES.items():
         if only and sid not in only:
             continue
-        stored = database.cache_get(_stored_key(q, sid)) if reuse else None
-        if stored and not stored["inicio"] <= q.faz_time("start") <= stored["fim"]:
-            stored = None  # período começa antes (ou depois) do guardado: busca tudo de novo
-        fetch_from = q.start
-        if stored:
-            fetch_from = max(q.start, min(q.end, datetime.strptime(stored["fim"], "%Y-%m-%d %H:%M:%S") - LATE_LOGS))
-        part = q.model_copy(update={"start": fetch_from})
-        lq = (part if fetch_from < q.end else q).log_query(lt, cat)
+        lq = q.log_query(lt, cat)
         lq.limit = limit
-        expr = lq.filter_expr()
-        if sid in EXTRA_FILTER:
-            expr = " and ".join(p for p in (expr, EXTRA_FILTER[sid]) if p)
+        extra = EXTRA_FILTER.get(sid)
+        expr = " and ".join(p for p in (lq.filter_expr(), extra) if p)
         fontes[sid] = {"nome": nome, "filtro": expr, "total": 0, "lidos": 0}
-        if stored and fetch_from >= q.end:
-            res = {"total": 0, "returned": 0, "rows": [], "mais": False}  # o período inteiro já estava guardado
-        else:
-            try:
-                res = _search(lq, expr) if sid in EXTRA_FILTER else run_query(lq, use_cache=False, save_cache=False, policy_names=False)
-            except FazError as e:
-                fontes[sid]["erro"] = str(e)
-                continue
-        new = [threat_row(r, sid) for r in res["rows"]]
-        if stored:
-            start, cut, end = q.faz_time("start"), part.faz_time("start"), q.faz_time("end")
-            if fetch_from >= q.end:
-                old = [r for r in stored["linhas"] if start <= r["data_hora"] <= end]
-            else:
-                old = [r for r in stored["linhas"] if start <= r["data_hora"] < cut]
-            got = _merge(new, old, limit)
-            fontes[sid].update(total=max(res["total"], res["returned"]) + len(old), lidos=len(got), guardados=len(old),
-                               mais=res["mais"] or stored["truncado"] or len(new) + len(old) > limit)
-        else:
-            got = new
-            fontes[sid].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=res["mais"])
-        if keep:
-            _store(q, sid, new, stored, res["mais"], limit)
-        rows.extend(got)
+
+        def fetch(part: LogQuery, extra=extra) -> dict:
+            if extra:
+                return _search(part, " and ".join(p for p in (part.filter_expr(), extra) if p))
+            return run_query(part, use_cache=False, save_cache=False, policy_names=False)
+        try:
+            res = incremental(lq, fetch, tag="ameaca:" + (extra or ""), reuse=reuse) if keep else fetch(lq)
+        except FazError as e:
+            fontes[sid]["erro"] = str(e)
+            continue
+        fontes[sid].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=res["mais"],
+                           guardados=res.get("guardados", 0))
+        rows.extend(threat_row(r, sid) for r in res["rows"])
     rows.sort(key=lambda r: r["data_hora"], reverse=True)
     return rows, fontes
 
 
 def _row_id(r: dict) -> str:
     return "|".join(str(r[k]) for k in ("data_hora", "fonte", "ameaca", "ip_origem", "ip_destino", "firewall"))
-
-
-def _merge(new: list[dict], old: list[dict], limit: int) -> list[dict]:
-    seen, out = set(), []
-    for r in sorted(new + old, key=lambda r: r["data_hora"], reverse=True):
-        if (k := _row_id(r)) not in seen:
-            seen.add(k)
-            out.append(r)
-    return out[:limit]
-
-
-def _stored_key(q: ThreatQuery, sid: str) -> str:
-    who = {"adom": q.adom, "devices": sorted(q.devices), "devname": q.devname or "", "fonte": sid}
-    return "threat-rows1:" + hashlib.sha1(json.dumps(who, sort_keys=True).encode()).hexdigest()
-
-
-def _store(q: ThreatQuery, sid: str, new: list[dict], stored: dict | None, truncated: bool, limit: int) -> None:
-    """Guarda os eventos da fonte por 7 dias, cobrindo do início guardado até o fim desta consulta."""
-    fim = min(q.end, datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
-    if stored:
-        linhas = _merge(new, stored["linhas"], limit)
-        value = {"inicio": stored["inicio"], "fim": max(stored["fim"], fim), "linhas": linhas,
-                 "truncado": stored["truncado"] or truncated or len(new) + len(stored["linhas"]) > len(linhas)}
-    else:
-        value = {"inicio": q.faz_time("start"), "fim": fim, "linhas": new, "truncado": truncated}
-    database.cache_set(_stored_key(q, sid), value, ttl=KEEP_TTL)
 
 
 # ---- mapa em tempo real ----------------------------------------------------------------------------

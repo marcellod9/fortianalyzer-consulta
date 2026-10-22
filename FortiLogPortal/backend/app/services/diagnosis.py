@@ -107,8 +107,9 @@ def diagnose(q: DiagnoseQuery) -> dict:
         lq = q.base_query(lt, only_blocked=True, filters=flts, limit=q.limit)
         layer["filtro"] = lq.filter_expr()
         try:
-            # sem cache: o atendente costuma pedir para o usuário tentar de novo e diagnosticar em seguida
-            res = run_query(lq, use_cache=False)
+            # sem cache de resultado: o atendente costuma pedir para o usuário tentar de novo e diagnosticar em
+            # seguida. Os eventos guardados valem, porque os últimos 15 min são sempre buscados de novo no FAZ.
+            res = run_query(lq, use_cache=False, keep=True, reuse=True)
         except FazError as e:
             layer["erro"] = errors[lt] = str(e)
             continue
@@ -132,7 +133,7 @@ def diagnose(q: DiagnoseQuery) -> dict:
         rows = []
         for lt in (("traffic", "webfilter") if target_kind == "site" else ("traffic",)):
             try:
-                res = run_query(q.base_query(lt, filters=flts, limit=ALLOWED_LIMIT), use_cache=False)
+                res = run_query(q.base_query(lt, filters=flts, limit=ALLOWED_LIMIT), use_cache=False, keep=True, reuse=True)
                 rows.extend(res["rows"])
             except FazError as e:
                 errors[f"{lt} (permitidos)"] = str(e)

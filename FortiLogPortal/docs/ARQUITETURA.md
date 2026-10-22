@@ -40,7 +40,7 @@ SQLite (database/fortilogportal.db)
 |---|---|
 | `query_history` | data/hora, usuário, tipo, termo, parâmetros, status, nº de resultados e bloqueios, resumo, tempo |
 | `app_log` | logs internos: chamadas de integração (com `duration_ms`), falhas, erros |
-| `cache` | respostas das APIs com expiração (`PORTAL_CACHE_TTL`) |
+| `cache` | respostas das APIs com expiração (`PORTAL_CACHE_TTL`) e eventos lidos do FAZ guardados por `PORTAL_KEEP_DAYS` dias (prefixo `rows1:`, limite `PORTAL_KEEP_MAX_MB`) |
 | `settings` | configurações não sensíveis (reservado para preferências futuras) |
 | `temp_data` | informações temporárias: resultados para exportação (1 h) |
 | `ioc_lookup` | resultado de cada consulta de reputação (dashboard Vision One) |
@@ -48,6 +48,17 @@ SQLite (database/fortilogportal.db)
 | `portal_user` | usuários do login Microsoft (oid, e-mail, nome, último login) e a permissão de relatórios, com quem alterou e quando |
 | `auth_session` | sessões de login ativas: hash do cookie, usuário, funções do Entra, IP, criação, último uso e expiração |
 | `meta` | versão do esquema |
+
+### Eventos guardados (consultas mais rápidas)
+
+Um log não muda depois de gravado no FortiAnalyzer. Por isso Logs, Relatórios, Diagnóstico, Dashboard e Ameaças
+guardam os eventos que leem (`logsearch.incremental`), por `PORTAL_KEEP_DAYS` dias (padrão 7). A consulta seguinte
+com os mesmos filtros (ADOM, firewall, tipo de log e filtros da tela; o período e o limite não entram na chave) só
+busca no FAZ o trecho depois do fim guardado, começando 15 minutos antes pelos logs que chegam atrasados. Um período
+que começa antes do guardado é buscado inteiro. "Buscar tudo de novo no FortiAnalyzer" (`?cache=false`) ignora o
+guardado. Ficam sempre ao vivo: tempo real, alertas do Event Monitor, Top Threats, agente Trend, isolamento e Trend
+inativo. Acima de `PORTAL_KEEP_MAX_MB` os mais antigos são apagados; *Configuração > Limpar cache* apaga tudo.
+
 
 Credenciais **não** ficam no banco.
 
@@ -71,7 +82,7 @@ Credenciais **não** ficam no banco.
 | GET | `/api/v1/endpoints` | inventário de endpoints |
 | GET | `/api/v1/machine?ip=&nome=&usuario=&refresh=` | máquina no Vision One: agente Trend, isolamento e alertas abertos do Workbench da máquina e do usuário |
 | GET | `/api/dashboard/faz?hours=&refresh=`, `/api/dashboard/local` | dashboard |
-| POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos Os eventos lidos de cada fonte ficam guardados 7 dias (por ADOM e firewall): a consulta seguinte só busca no FAZ o trecho novo, desde 15 min antes do fim guardado. `?cache=false` busca tudo de novo |
+| POST | `/api/threats` | `{start, end, adom, devices, top}`: máquinas com alerta de IOC/botnet (Event Monitor), ranking de ameaças, máquinas afetadas, gráficos e `result_id` para exportar os eventos Usa os eventos guardados (veja abaixo). `?cache=false` busca tudo de novo |
 | POST | `/api/threats/live?first=` | `{start, end, adom, devices, fontes}` da janela mais recente; a tela pede uma fonte por vez e repete a cada 15/30/60 s: eventos de ameaça com `id` estável, país (`pais`/`mapa`), direção (`entrada`) e firewall. Só a primeira consulta (`first=true`) entra no histórico |
 | POST | `/api/threats/trend-inactive?refresh=` | `{start, end, adom, devices, so_computadores, incluir_ativos}` (`so_computadores`: só o que o FortiGate identifica como Windows): máquinas internas vistas no firewall (FortiView Top Sources ou logs de tráfego) cruzadas com o inventário de endpoints do Vision One (cache de 30 min; `refresh=true` lê de novo) e `result_id` para exportar |
 | POST | `/api/reports` | `{tipo: geral\|usuario\|ip\|site\|aplicacao, valor, start, end, adom, devices, somente_bloqueios, top}`: relatório com os dados dos gráficos e `report_id` |

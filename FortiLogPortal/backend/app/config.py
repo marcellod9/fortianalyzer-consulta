@@ -42,6 +42,9 @@ class Settings:
     log_level: str = field(default_factory=lambda: os.getenv("PORTAL_LOG_LEVEL", "INFO").upper())
     demo: bool = field(default_factory=lambda: _bool("PORTAL_DEMO"))
     cache_ttl: int = field(default_factory=lambda: _int("PORTAL_CACHE_TTL", 600))
+    # eventos já lidos do FAZ ficam guardados: a consulta seguinte só busca o trecho novo (0 desliga)
+    keep_days: int = field(default_factory=lambda: max(0, min(_int("PORTAL_KEEP_DAYS", 7), 30)))
+    keep_max_mb: int = field(default_factory=lambda: max(50, _int("PORTAL_KEEP_MAX_MB", 1024)))
 
     faz_url: str = field(default_factory=lambda: os.getenv("FAZ_URL", "").rstrip("/"))
     faz_token: str = field(default_factory=lambda: os.getenv("FAZ_API_TOKEN", ""))
@@ -131,6 +134,8 @@ class Settings:
             "v1_lookback_days": self.v1_lookback_days,
             "v1_sandbox_enabled": self.v1_sandbox_enabled,
             "cache_ttl": self.cache_ttl,
+            "keep_days": self.keep_days,
+            "keep_max_mb": self.keep_max_mb,
             "auth_mode": self.auth_mode,
             "entra_tenant_id": self.entra_tenant_id,
             "entra_client_id": self.entra_client_id,

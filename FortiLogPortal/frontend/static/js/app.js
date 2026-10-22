@@ -1096,6 +1096,25 @@ const FLP = (() => {
   document.addEventListener("DOMContentLoaded", () => { initTheme(); initUser(); initQuickPeriods(); });
   applyTheme(preferredTheme());  // aplica já, antes do carregamento completo, para evitar "piscar"
 
-  return { api, download, toast, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
+  // eventos reaproveitados de consultas anteriores (guardados no banco local); o link pede tudo de novo ao FAZ
+  function keptNote(n) {
+    if (!n) return "";
+    return ` · ${Number(n).toLocaleString("pt-BR")} eventos reaproveitados de consultas anteriores (guardados por até 7 dias)
+      <a href="#" data-act="kept-refresh">Buscar tudo de novo no FortiAnalyzer</a>`;
+  }
+
+  // liga o link de keptNote: marca a próxima pesquisa como "sem reaproveitar" e reenvia o formulário
+  function keptRefresh(box, form) {
+    const state = { fresh: false };
+    box.addEventListener("click", (ev) => {
+      if (!ev.target.closest("[data-act=kept-refresh]")) return;
+      ev.preventDefault();
+      state.fresh = true;
+      form.requestSubmit();
+    });
+    return () => { const f = state.fresh; state.fresh = false; return f ? "?cache=false" : ""; };
+  }
+
+  return { api, download, toast, keptNote, keptRefresh, busy, esc, actionBadge, verdictClass, riskColor, setDefaultPeriod, explainHtml,
            renderLogTable, exportButtons, sortableTable, renderReputation, sandboxFlow, sandboxQuotaText, machineLookup, machineTicketLine, formData, loadAdomsAndDevices, devicePicker, filterBuilder, relativePeriod, store };
 })();

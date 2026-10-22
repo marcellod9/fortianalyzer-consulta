@@ -201,8 +201,7 @@ FLP.threats = (() => {
     box.innerHTML = `
       <div class="small text-body-secondary mb-2"><i class="bi bi-calendar3"></i> ${esc(d.periodo.inicio)} a ${esc(d.periodo.fim)}
         · gerado em ${esc(d.gerado_em.slice(0, 16))}${d.cache ? " (cache)" : ""}
-        ${d.reaproveitados ? `· ${num(d.reaproveitados)} eventos reaproveitados de consultas anteriores (guardados por 7 dias)
-          <a href="#" data-act="thr-refresh">Buscar tudo de novo no FortiAnalyzer</a>` : ""}<br><i class="bi bi-database"></i> ${fontes}</div>
+${FLP.keptNote(d.reaproveitados)}<br><i class="bi bi-database"></i> ${fontes}</div>
       ${d.amostra ? `<div class="alert alert-warning small py-2"><i class="bi bi-info-circle"></i> Alguma fonte tem mais eventos do que o portal lê
         (${num(d.limite_amostra)} por fonte, os mais recentes). Para o período inteiro, diminua o período ou escolha o firewall.</div>` : ""}
       ${erros.length ? `<div class="alert alert-warning small py-2">Não foi possível consultar: ${erros.map((f) => `${esc(f.nome)} (${esc(f.erro)})`).join("; ")}</div>` : ""}
@@ -239,18 +238,11 @@ FLP.threats = (() => {
                                       { box: document.getElementById("lastN"), input: document.getElementById("lastNValue"),
                                         label: document.getElementById("lastNLabel") });
     FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), defaultAdom);
-    let fresh = false;
-    document.getElementById("result").addEventListener("click", (ev) => {
-      if (!ev.target.closest("[data-act=thr-refresh]")) return;
-      ev.preventDefault();
-      fresh = true;
-      form.requestSubmit();
-    });
+    const fresh = FLP.keptRefresh(document.getElementById("result"), form);
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       period.refresh();
-      const body = FLP.formData(form), url = fresh ? "/api/threats?cache=false" : "/api/threats";
-      fresh = false;
+      const body = FLP.formData(form), url = "/api/threats" + fresh();
       FLP.busy(btn, true);
       document.getElementById("downloads").innerHTML = "";
       document.getElementById("result").innerHTML = `<div class="small text-body-secondary"><span class="spinner-border spinner-border-sm"></span>

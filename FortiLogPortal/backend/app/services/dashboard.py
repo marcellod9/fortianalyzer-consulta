@@ -24,7 +24,7 @@ def faz_overview(hours: int = 24, adom: str | None = None, refresh: bool = False
             return hit
     end = datetime.now().replace(second=0, microsecond=0)
     q = LogQuery(adom=adom, start=end - timedelta(hours=hours), end=end, limit=settings.faz_max_results)
-    res = blocked_search(q, logtypes=("webfilter", "traffic", "app-ctrl"))
+    res = blocked_search(q, logtypes=("webfilter", "traffic", "app-ctrl"), keep=True, reuse=not refresh)
     rows = res["rows"]
     sites = Counter(r["site"] or r["ip_destino"] for r in rows if r["tipo_log"] in ("webfilter", "app-ctrl", "dns")
                     and (r["site"] or r["ip_destino"]))

@@ -61,6 +61,10 @@ o usuário do Windows que iniciou o servidor.
   escondida e pausa sozinho depois de 1 hora ligado. Em firewalls muito movimentados, use filtros.
 - Resultados ficam em cache por `PORTAL_CACHE_TTL` segundos (padrão 10 min). Para forçar nova
   consulta, use *Configuração > Limpar cache*.
+- Os eventos lidos do FAZ ficam guardados por `PORTAL_KEEP_DAYS` dias (padrão 7, até `PORTAL_KEEP_MAX_MB`):
+  repetir ou atualizar uma consulta só busca no FAZ o trecho novo. O link *Buscar tudo de novo no
+  FortiAnalyzer* faz a consulta completa. Para usar, copie as duas linhas do `config/.env.example` para o seu `.env`
+  (sem elas vale o padrão de 7 dias).
 - O dashboard do FortiAnalyzer usa uma amostra dos bloqueios mais recentes (até
   `FAZ_MAX_RESULTS` por tipo de log) e fica em cache por pelo menos 5 minutos.
 
