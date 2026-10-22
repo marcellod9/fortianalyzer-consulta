@@ -661,6 +661,39 @@ const FLP = (() => {
     box.innerHTML = `<div class="alert alert-warning small mb-0">O Sandbox não terminou em 10 minutos. Veja o resultado depois em Threat Intelligence &gt; Sandbox Analysis (tarefa ${esc(taskId)}).</div>`;
   }
 
+  // Orientação de recategorização no FortiGuard (fluxo da Sustentação): validar reputação antes de pedir reavaliação
+  const FG_LOOKUP = "https://www.fortiguard.com/webfilter?q=";
+  const FG_SUBMIT = "https://www.fortiguard.com/faq/wfratingsubmit";
+  const VT_SEARCH = "https://www.virustotal.com/gui/search/";
+  function recatGuide(r, fg) {
+    let host = r.indicador;
+    try { if (r.tipo === "url") host = new URL(r.indicador).hostname; } catch { /* fica o indicador */ }
+    const risky = ["Malicioso", "Suspeito"].includes(r.reputacao) || fg.risco === "alto";
+    const link = (href, icon, text) => `<a class="btn btn-sm btn-outline-primary" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><i class="bi bi-${icon}"></i> ${esc(text)} <i class="bi bi-box-arrow-up-right small"></i></a>`;
+    const steps = `
+      <ol class="small mb-2 ps-3">
+        <li><b>Valide a reputação antes:</b> confira o resultado do Vision One acima e consulte o site no VirusTotal. Se houver alertas
+          relevantes ou consistentes (vários fornecedores, blacklist, reputação ruim), <b>não</b> peça recategorização como site legítimo.</li>
+        <li><b>Consulte a categoria no FortiGuard (lookup)</b> para confirmar como o site está classificado hoje.</li>
+        <li><b>Se for seguro e a categoria estiver errada ou ausente, solicite a reavaliação/recategorização.</b> O formulário pede nome e
+          e-mail; o FortiGuard manda um e-mail confirmando o pedido e, depois, outro com o resultado (aprovado ou negado).</li>
+      </ol>
+      <div class="d-flex flex-wrap gap-2">${link(VT_SEARCH + encodeURIComponent(r.indicador), "virus", "Consultar no VirusTotal")}
+        ${link(FG_LOOKUP + encodeURIComponent(host), "search", "Consultar categoria (lookup)")}
+        ${risky ? "" : link(FG_SUBMIT, "send", "Solicitar recategorização (FortiGuard)")}</div>`;
+    const warn = risky ? `<div class="alert alert-danger small py-1 mb-2"><i class="bi bi-exclamation-octagon"></i> O portal encontrou risco para este
+      indicador (${esc(r.reputacao)}${fg.risco === "alto" ? `, categoria ${esc(fg.categoria)}` : ""}): não solicite recategorização sem validação da equipe de segurança.</div>` : "";
+    if (fg.nao_classificado) {
+      return `<div class="alert alert-info small mt-2 mb-0 recat-guide"><div class="fw-semibold mb-1"><i class="bi bi-tag"></i>
+        Site sem categoria no FortiGuard (${esc(fg.categoria)}): o usuário ou o analista pode e deve pedir a classificação</div>
+        <div class="mb-2">Sites "Unrated" costumam ser bloqueados ou tratados com cautela pela política. Depois de validar que o site é seguro,
+          peça ao FortiGuard que o classifique. Quando a categoria nova for publicada, todos os FortiGates passam a usá-la, e o
+          site fica liberado se essa categoria for permitida pela política.</div>${warn}${steps}</div>`;
+    }
+    return `<details class="mt-2 recat-guide"><summary class="small">A categoria do FortiGuard parece errada? Veja como pedir reavaliação</summary>
+      <div class="border rounded p-2 mt-1">${warn}${steps}</div></details>`;
+  }
+
   // Cartão de reputação (aba Reputação e janela do evento)
   function renderReputation(container, r) {
     const list = (xs) => (xs || []).join(", ") || "-";
@@ -699,6 +732,7 @@ const FLP = (() => {
           ${row("Fonte da informação", esc(list(r.fontes)))}
           ${row("Recomendações", `<ul class="mb-0 ps-3">${(r.recomendacoes || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`)}
         </dl>
+        ${fg?.categoria ? recatGuide(r, fg) : ""}
         ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
         <details class="mt-2"><summary class="small">Detalhes técnicos (Suspicious Objects, detecções, alertas)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
       </div></div>`;
