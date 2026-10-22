@@ -84,13 +84,25 @@ def test_lookup(host: str = "www.fortinet.com") -> dict:
     return {"site": host, "categoria": r["categoria"], "categoria_id": r["categoria_id"], "via": r["via"]}
 
 
+def _snippet(resp) -> str:
+    text = " ".join((resp.text or "").split())[:160]
+    server = resp.headers.get("Server") or ""
+    return " · ".join(v for v in (f"servidor {server}" if server else "", f"resposta: {text}" if text else "") if v)
+
+
 def rating_lookup(host: str, session: requests.Session | None = None) -> dict:
+    """GET com ?url= (FortiOS 7.x); se o FortiGate recusar o método (405), tenta POST com {"url": [site]}."""
     http = session or requests
+    url = f"{settings.fgt_url}/api/v2/monitor/utm/rating-lookup"
+    headers = {"Authorization": f"Bearer {settings.fgt_token}"}
+    tries = []
     try:
         with timed("fortigate", "monitor/utm/rating-lookup"):
-            resp = http.get(f"{settings.fgt_url}/api/v2/monitor/utm/rating-lookup", params={"url": host},
-                            headers={"Authorization": f"Bearer {settings.fgt_token}"},
-                            verify=settings.fgt_verify, timeout=TIMEOUT)
+            resp = http.get(url, params={"url": host}, headers=headers, verify=settings.fgt_verify, timeout=TIMEOUT)
+            tries.append(f"GET {resp.status_code}")
+            if resp.status_code == 405:
+                resp = http.post(url, json={"url": [host]}, headers=headers, verify=settings.fgt_verify, timeout=TIMEOUT)
+                tries.append(f"POST {resp.status_code}")
     except requests.exceptions.SSLError as e:
         raise FgtError("Falha de certificado TLS ao conectar no FortiGate. Ajuste FGT_VERIFY_TLS.") from e
     except requests.exceptions.RequestException as e:
@@ -99,7 +111,11 @@ def rating_lookup(host: str, session: requests.Session | None = None) -> dict:
         raise FgtError(f"FortiGate recusou o token (HTTP {resp.status_code}). Confira FGT_API_TOKEN, o perfil do "
                        "administrador REST API e os Trusted Hosts.")
     if resp.status_code >= 400:
-        raise FgtError(f"FortiGate respondeu HTTP {resp.status_code} na consulta de classificação FortiGuard.")
+        detail = _snippet(resp)
+        hint = (" Confira se FGT_URL aponta para a porta de administração HTTPS do FortiGate (System > Settings > "
+                "HTTPS port), e não para o portal da VPN SSL." if resp.status_code in (404, 405) else "")
+        raise FgtError(f"FortiGate respondeu HTTP {resp.status_code} na consulta de classificação FortiGuard "
+                       f"({', '.join(tries)}{'; ' + detail if detail else ''}).{hint}")
     try:
         data = resp.json()
     except ValueError as e:

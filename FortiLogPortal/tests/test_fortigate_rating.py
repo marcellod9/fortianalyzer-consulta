@@ -103,3 +103,35 @@ def test_config_test_button_uses_direct_fortigate(monkeypatch):
     monkeypatch.setattr(fortigate, "rating_lookup", lambda host: {"categoria": "Information Technology", "categoria_id": 52})
     r = TestClient(app).post("/api/status/test/fortiguard", headers={"X-FLP-Request": "1"}).json()
     assert r["ok"] and r["detalhe"]["categoria"] == "Information Technology" and "direto" in r["detalhe"]["via"]
+
+
+def test_direct_lookup_retries_with_post_on_405(monkeypatch):
+    class R:
+        def __init__(self, code, data=None, text=""):
+            self.status_code, self._d, self.text, self.headers = code, data, text, {}
+
+        def json(self):
+            return self._d
+
+    class S:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kw):
+            self.calls.append("GET")
+            return R(405, text="Method Not Allowed")
+
+        def post(self, url, **kw):
+            self.calls.append(("POST", kw["json"]))
+            return R(200, {"results": [{"category_desc": "Phishing", "category_id": 59}]})
+    monkeypatch.setattr(fortigate.settings, "fgt_url", "https://fw")
+    s = S()
+    assert fortigate.rating_lookup("a.example", session=s)["categoria"] == "Phishing"
+    assert s.calls == ["GET", ("POST", {"url": ["a.example"]})]
+
+    s.post = lambda url, **kw: R(405, text="Method Not Allowed")
+    try:
+        fortigate.rating_lookup("a.example", session=s)
+        raise AssertionError("devia falhar")
+    except fortigate.FgtError as e:
+        assert "GET 405, POST 405" in str(e) and "porta de administração" in str(e)
