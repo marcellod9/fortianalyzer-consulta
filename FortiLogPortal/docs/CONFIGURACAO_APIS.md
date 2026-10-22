@@ -124,6 +124,28 @@ relativo à pasta FortiLogPortal ou absoluto). Use `false` só em teste.
 
 ---
 
+## 1b. FortiGate (opcional): categoria FortiGuard de qualquer site
+
+Sem esta parte, a aba Reputação mostra a categoria FortiGuard só dos sites que aparecem nos logs de filtro web ou DNS
+das últimas 24 h no FortiAnalyzer (campo `catdesc`). Com um FortiGate configurado, o portal pergunta a classificação
+ao FortiGuard pela API REST do FortiOS (`GET /api/v2/monitor/utm/rating-lookup?url=<site>`) e traz a categoria de
+qualquer domínio, mesmo que ninguém o tenha acessado. A resposta fica 1 dia em cache. Se o FortiGate falhar, a
+categoria volta a ser procurada nos logs e a tela avisa.
+
+1. No FortiGate: **System > Admin Profiles > Create New**: perfil somente leitura (o mínimo é *Security Profile: Read*;
+   se a consulta responder 403, inclua *System: Read*).
+2. **System > Administrators > Create New > REST API Admin**: escolha o perfil acima, restrinja os *Trusted Hosts* ao
+   IP da máquina do portal e copie a chave gerada.
+3. No `config\.env`:
+
+| Variável | Exemplo |
+|---|---|
+| `FGT_URL` | `https://fw-br-xx-exemplo.marista.edu.br` (com a porta, se a administração não for na 443) |
+| `FGT_API_TOKEN` | chave do REST API Admin |
+| `FGT_VERIFY_TLS` | `true`, `false` ou o caminho da CA interna |
+
+Qualquer FortiGate com licença de Web Filtering e acesso ao FortiGuard serve; a classificação é a mesma para todos.
+
 ## 2. Trend Micro Vision One (`https://portal.xdr.trendmicro.com`)
 
 O portal usa a **API pública oficial v3.0** (https://automation.trendmicro.com/xdr/api-v3),

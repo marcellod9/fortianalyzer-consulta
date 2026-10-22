@@ -670,11 +670,13 @@ const FLP = (() => {
     let fgRow = "";
     if (fg) {
       const cls = fg.risco === "alto" ? "danger" : fg.risco === "medio" ? "warning" : fg.nao_classificado ? "secondary" : "success";
-      const where = fg.origem === "evento" ? "registrada no log" : `visto no log de ${shortTime(fg.visto_em)}`;
+      const where = fg.origem === "evento" ? "registrada no log" : fg.origem === "fortiguard" ? "consulta ao FortiGuard"
+        : `visto no log de ${shortTime(fg.visto_em)}`;
       fgRow = row("FortiGuard", fg.categoria
         ? `<span class="badge text-bg-${cls}">${esc(fg.categoria)}</span> <span class="text-body-secondary">${esc(
             fg.risco ? `categoria de risco · ${where}` : fg.nao_classificado ? `site ainda não classificado · ${where}` : where)}</span>`
-        : `<span class="text-body-secondary">${esc(fg.erro ? `não consultado (${fg.erro})` : "sem acesso a este site nos logs das últimas 24 h")}</span>`);
+        : `<span class="text-body-secondary">${esc(fg.erro ? `não consultado (${fg.erro})` : "sem acesso a este site nos logs das últimas 24 h")}</span>`)
+        + (fg.aviso ? `<div class="small text-warning-emphasis">${esc(fg.aviso)}</div>` : "");
     }
     container.innerHTML = `
       <div class="card mb-3 rep-card"><div class="card-body">

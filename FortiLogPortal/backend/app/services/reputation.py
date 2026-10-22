@@ -47,6 +47,7 @@ FORTIGUARD_RISK = {
 }
 FORTIGUARD_UNRATED = {"unrated", "not rated", "unknown"}
 FORTIGUARD_LOOKBACK = timedelta(hours=24)
+FORTIGUARD_RATING_TTL = 24 * 3600   # a classificação de um site muda pouco: 1 dia em cache
 SAFE_CATEGORY = re.compile(r"^[^\x00-\x1f\"\\<>]{1,128}$")
 
 
@@ -166,14 +167,40 @@ def fortiguard_from_logs(host: str) -> dict:
     return out
 
 
+def fortiguard_from_fortigate(host: str) -> dict:
+    """Classificação do FortiGuard perguntada a um FortiGate (FGT_URL): vale para qualquer site, mesmo não acessado."""
+    from . import fortigate
+
+    key = f"fgt-rating:{host}"
+    hit = database.cache_get(key)
+    if hit is not None:
+        return hit
+    r = fortigate.rating_lookup(host)
+    out = {"categoria": r["categoria"] or f"Categoria {r['categoria_id']}", "categoria_id": r["categoria_id"],
+           "origem": "fortiguard", "visto_em": None, "erro": None}
+    database.cache_set(key, out, ttl=FORTIGUARD_RATING_TTL)
+    return out
+
+
 def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool) -> dict | None:
     if ioc_type == "ip":
         return None
     if category:
         return {"categoria": category, "origem": "evento", "visto_em": None, "erro": None}
+    host = host_of(value) if ioc_type == "url" else value
+    from . import fortigate
+    fgt_err = None
+    if fortigate.configured():
+        try:
+            return fortiguard_from_fortigate(host)
+        except fortigate.FgtError as e:  # sem o FortiGate, a categoria ainda pode vir dos logs
+            fgt_err = str(e)
     if not from_faz:
-        return None
-    return fortiguard_from_logs(host_of(value) if ioc_type == "url" else value)
+        return {"categoria": None, "origem": "fortiguard", "visto_em": None, "erro": fgt_err} if fgt_err else None
+    out = fortiguard_from_logs(host)
+    if fgt_err:
+        out = {**out, "aviso": f"Consulta ao FortiGuard pelo FortiGate falhou ({fgt_err}); categoria procurada nos logs."}
+    return out
 
 
 # O que marcar na função (role) da chave de API quando o Vision One responde 403, com os nomes do console em inglês.
