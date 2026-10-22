@@ -117,13 +117,14 @@ def fortiguard_from_fortigate(host: str) -> dict:
     """Classificação do FortiGuard perguntada a um FortiGate (FGT_URL): vale para qualquer site, mesmo não acessado."""
     from . import fortigate
 
-    key = f"fgt-rating:{host}"
+    key = f"fgt-rating2:{host}"  # 2: a categoria deixou de vir trocada pelo grupo (2026-10-22)
     hit = database.cache_get(key)
     if hit is not None:
         return hit
     r = fortigate.rating_lookup(host) if fortigate.configured() else fortigate.rating_via_faz(host)
     out = {"categoria": r["categoria"] or f"Categoria {r['categoria_id']}", "categoria_id": r["categoria_id"],
-           "origem": "fortiguard", "via": r.get("via", "FortiGate"), "visto_em": None, "erro": None}
+           "grupo": r.get("grupo"), "origem": "fortiguard", "via": r.get("via", "FortiGate"), "visto_em": None,
+           "erro": None, "resposta_fortigate": r.get("resposta")}
     database.cache_set(key, out, ttl=FORTIGUARD_RATING_TTL)
     return out
 
@@ -174,7 +175,7 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         fortiguard_category = fortiguard_category.strip() or None
         if fortiguard_category and not SAFE_CATEGORY.match(fortiguard_category):
             raise IndicatorError("Categoria do FortiGuard inválida.")
-    cache_key = "rep:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}:"
+    cache_key = "rep2:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}:"
                                       f"{fortiguard_category}:{fortiguard_from_faz}".encode()).hexdigest()
     cached = None if use_sandbox else database.cache_get(cache_key)
     if cached:
@@ -423,6 +424,7 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict, fortigua
         "fortiguard": ({**fortiguard, "risco": ("alto" if fg_risk[0] >= 80 else "medio") if fg_risk else None,
                         "nao_classificado": fg_unrated} if fortiguard else None),
         "detalhes": {
+            "fortiguard": fortiguard,
             "sandbox": sb,
             "sandbox_resultado": sbr,
         },

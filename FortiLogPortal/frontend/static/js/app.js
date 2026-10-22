@@ -704,7 +704,7 @@ const FLP = (() => {
       const where = fg.origem === "evento" ? "registrada no log" : fg.origem === "fortiguard" ? `consulta ao FortiGuard${fg.via ? ` (${fg.via})` : ""}`
         : `visto no log de ${shortTime(fg.visto_em)}`;
       fgRow = row("FortiGuard", fg.categoria
-        ? `<span class="badge text-bg-${cls}">${esc(fg.categoria)}</span> <span class="text-body-secondary">${esc(
+        ? `<span class="badge text-bg-${cls}">${esc(fg.categoria)}</span>${fg.grupo ? ` <span class="text-body-secondary">grupo ${esc(fg.grupo)} ·</span>` : ""} <span class="text-body-secondary">${esc(
             fg.risco ? `categoria de risco · ${where}` : fg.nao_classificado ? `site ainda não classificado · ${where}` : where)}</span>`
         : `<span class="text-body-secondary">${esc(fg.erro ? `não consultado (${fg.erro})` : "sem acesso a este site nos logs das últimas 24 h")}</span>`)
         + (fg.aviso ? `<div class="small text-warning-emphasis">${esc(fg.aviso)}</div>` : "");
@@ -732,7 +732,7 @@ const FLP = (() => {
         </dl>
         ${fg?.categoria ? recatGuide(r, fg) : ""}
         ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
-        <details class="mt-2"><summary class="small">Detalhes técnicos (Sandbox)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
+        <details class="mt-2"><summary class="small">Detalhes técnicos (FortiGuard e Sandbox)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
       </div></div>`;
   }
 

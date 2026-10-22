@@ -4,10 +4,10 @@ from app.services import fortigate, reputation
 
 def test_parse_rating_accepts_list_dict_and_id_only():
     assert fortigate.parse_rating({"results": [{"url": "x.com", "category_id": 26, "category_desc": "Malicious Websites"}]}) \
-        == {"categoria": "Malicious Websites", "categoria_id": 26}
+        == {"categoria": "Malicious Websites", "categoria_id": 26, "grupo": None}
     assert fortigate.parse_rating({"results": {"category": "Shopping"}})["categoria"] == "Shopping"
-    assert fortigate.parse_rating({"results": [{"category": 41}]}) == {"categoria": None, "categoria_id": 41}
-    assert fortigate.parse_rating({"results": []}) == {"categoria": None, "categoria_id": None}
+    assert fortigate.parse_rating({"results": [{"category": 41}]})["categoria_id"] == 41
+    assert fortigate.parse_rating({"results": []}) == {"categoria": None, "categoria_id": None, "grupo": None}
 
 
 def test_fortigate_rating_is_used_for_sites_never_accessed(monkeypatch):
@@ -135,3 +135,14 @@ def test_direct_lookup_retries_with_post_on_405(monkeypatch):
         raise AssertionError("devia falhar")
     except fortigate.FgtError as e:
         assert "GET 405, POST 405" in str(e) and "porta de administração" in str(e)
+
+
+def test_group_is_never_taken_as_the_category():
+    # www.talkdrill.com: no FortiGuard, categoria Education e grupo General Interest - Personal
+    for item in ({"category": "General Interest - Personal", "subcategory": "Education"},
+                 {"category_desc": "General Interest - Personal", "rating": "Education", "category_id": 30},
+                 {"group": "General Interest - Personal", "category": "Education"},
+                 {"category": "Education", "group_desc": "General Interest - Personal"}):
+        r = fortigate.parse_rating({"results": [item]})
+        assert r["categoria"] == "Education" and r["grupo"] == "General Interest - Personal", item
+    assert fortigate.parse_rating({"results": [{"category": "Unrated"}]})["categoria"] == "Unrated"
