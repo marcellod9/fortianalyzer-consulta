@@ -552,9 +552,8 @@ def consolidate(ioc_type: str, value: str, sources: dict, errors: dict, fortigua
     if fg_risk and reputacao in ("Malicioso", "Suspeito"):
         recomendacoes.insert(0, f"O FortiGuard classifica o site como \"{fg_cat}\" ({fg_risk[1]}).")
     elif fg_unrated:
-        recomendacoes.append("O FortiGuard ainda não classificou este site (Unrated). Valide a reputação (Vision One e "
-                             "VirusTotal) e, se o site for seguro, solicite a recategorização no FortiGuard: veja o passo a "
-                             "passo abaixo.")
+        recomendacoes.append("O FortiGuard ainda não classificou este site (Unrated). Confira o resultado do Vision One e, se "
+                             "o site for seguro, solicite a classificação no FortiGuard: veja o passo a passo abaixo.")
 
     return {
         "indicador": value,
