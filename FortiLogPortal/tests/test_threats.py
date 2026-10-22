@@ -218,3 +218,36 @@ def test_affected_machine_is_never_an_external_address(src, dst, sc, dc, expecte
     assert t["afetado_ip"] == expected
     hosts = threats._hosts([t])
     assert [h["ip"] for h in hosts] == ([expected] if expected else [])
+
+
+def test_events_are_kept_7_days_and_only_the_new_part_is_searched(monkeypatch):
+    calls = []
+
+    def fake(lq, *a, **k):
+        calls.append((lq.logtype, lq.faz_time("start"), lq.faz_time("end")))
+        when = (lq.end - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+        row = {"data_hora": when, "bloqueado": True, "acao_original": "blocked", "usuario": "", "ip_origem": "10.0.0.9",
+               "ip_destino": "8.8.8.8", "maquina": "", "destino": "8.8.8.8:53", "firewall": "FW-KEEP",
+               "log_original": {"attack": "X", "virus": "Y", "threats": ["t"]}}
+        return {"total": 1, "returned": 1, "rows": [row], "mais": False}
+    monkeypatch.setattr(threats, "run_query", fake)
+    monkeypatch.setattr(threats, "_search", lambda lq, expr: fake(lq))
+    end = datetime(2026, 10, 20, 12, 0)
+    first = threats.ThreatQuery(start=end - timedelta(days=1), end=end, devname="keep-test")
+    rows, fontes = threats._read_sources(first, 100, keep=True, reuse=True)
+    assert len(rows) == len(threats.SOURCES) and not any(f.get("guardados") for f in fontes.values())
+    assert all(c[1] == "2026-10-19 12:00:00" for c in calls)
+
+    calls.clear()  # uma hora depois: só busca a última hora (mais a margem de logs atrasados)
+    later = threats.ThreatQuery(start=end - timedelta(days=1) + timedelta(hours=1), end=end + timedelta(hours=1), devname="keep-test")
+    rows, fontes = threats._read_sources(later, 100, keep=True, reuse=True)
+    assert calls and all(c[1] == "2026-10-20 11:45:00" for c in calls)
+    assert all(f["guardados"] == 1 for f in fontes.values()) and len(rows) == 2 * len(threats.SOURCES)
+
+    calls.clear()  # período já coberto: nada vai ao FortiAnalyzer
+    rows, fontes = threats._read_sources(first, 100, keep=True, reuse=True)
+    assert not calls and len(rows) == len(threats.SOURCES)
+
+    calls.clear()  # período começa antes do guardado ou "buscar de novo": consulta inteira
+    rows, _ = threats._read_sources(first, 100, keep=True, reuse=False)
+    assert all(c[1] == "2026-10-19 12:00:00" for c in calls) and len(calls) == len(threats.SOURCES)
