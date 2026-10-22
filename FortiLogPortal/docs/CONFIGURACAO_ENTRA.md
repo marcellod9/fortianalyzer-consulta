@@ -127,6 +127,10 @@ some do menu e a API de relatórios responde 403.
 As abas **Configuração** e **Acessos** são só dos administradores. As demais abas (Dashboard, Diagnóstico,
 Logs, Reputação e Histórico) ficam abertas a todos que conseguem entrar.
 
+Em **Acessos > Logados agora** o administrador vê quem tem sessão aberta: nome, e-mail, IP, hora de entrada e
+última atividade ("Ativo" = usou nos últimos 5 minutos). O botão ao lado encerra a sessão da pessoa, que precisa
+entrar de novo; isso fica no Histórico (tipo Permissão). A lista atualiza sozinha a cada 30 segundos.
+
 ## Problemas comuns
 
 | Mensagem | O que fazer |

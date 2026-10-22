@@ -1,5 +1,8 @@
 """Login Microsoft Entra ID (/auth/*) e administração de acessos (/api/acessos)."""
+import hashlib
 import logging
+import time
+from datetime import datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
@@ -154,3 +157,47 @@ def remove_access(uid: int, request: Request):
     database.user_delete(uid)
     _audit(request, r["upn"], "removido do portal (sessões encerradas)")
     return {"ok": True}
+
+
+# ---- quem está logado ----------------------------------------------------------------------------
+ACTIVE_SECONDS = 300   # usou o portal nos últimos 5 min (a última atividade é gravada no máximo a cada 1 min)
+
+
+def _session_id(token_hash: str) -> str:
+    """Identificador para a tela: derivado do hash do cookie, nunca o próprio hash."""
+    return hashlib.sha256(("sid:" + token_hash).encode()).hexdigest()[:20]
+
+
+def _when(ts: float) -> str:
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@router.get("/api/acessos/sessoes")
+def list_sessions(request: Request):
+    auth.require_admin(request)
+    if not settings.auth_enabled:
+        return {"login": False, "sessoes": []}
+    token = request.cookies.get(auth.SESSION_COOKIE) or ""
+    mine = auth._hash(token) if token else ""
+    now = time.time()
+    out = []
+    for s in database.session_list(settings.session_idle_min * 60):
+        idle = max(0, now - s["last_seen"])
+        out.append({"id": _session_id(s["token_hash"]), "upn": s["upn"], "nome": s["name"] or s["upn"], "ip": s["ip"] or "",
+                    "entrou": _when(s["created_at"]), "ultima_atividade": _when(s["last_seen"]),
+                    "ocioso_min": int(idle // 60), "ativo": idle <= ACTIVE_SECONDS,
+                    "expira": _when(min(s["expires_at"], s["last_seen"] + settings.session_idle_min * 60)),
+                    "voce": s["token_hash"] == mine, "admin": s["upn"] in settings.portal_admins})
+    return {"login": True, "sessoes": out, "usuarios": len({s["upn"] for s in out}),
+            "inatividade_min": settings.session_idle_min}
+
+
+@router.delete("/api/acessos/sessoes/{sid}")
+def end_session(sid: str, request: Request):
+    auth.require_admin(request)
+    for s in database.session_list(settings.session_idle_min * 60):
+        if _session_id(s["token_hash"]) == sid:
+            database.session_delete(s["token_hash"])
+            _audit(request, s["upn"], "sessão encerrada pelo administrador")
+            return {"ok": True}
+    raise HTTPException(404, "Sessão não encontrada (talvez já tenha expirado)")

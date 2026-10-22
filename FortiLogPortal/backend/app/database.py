@@ -475,6 +475,16 @@ def session_touch(token_hash: str) -> None:
         c.execute("UPDATE auth_session SET last_seen = ? WHERE token_hash = ?", (time.time(), token_hash))
 
 
+def session_list(idle_seconds: int) -> list[dict]:
+    """Sessões válidas (não expiradas e usadas dentro do tempo de inatividade), a mais recente primeiro."""
+    now = time.time()
+    with connect() as c:
+        rows = c.execute("SELECT token_hash, oid, upn, name, ip, created_at, last_seen, expires_at FROM auth_session"
+                         " WHERE expires_at >= ? AND last_seen >= ? ORDER BY last_seen DESC",
+                         (now, now - idle_seconds)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def session_delete(token_hash: str) -> None:
     with connect() as c:
         c.execute("DELETE FROM auth_session WHERE token_hash = ?", (token_hash,))

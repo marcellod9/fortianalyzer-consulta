@@ -196,3 +196,19 @@ def test_config_problems(entra, monkeypatch):
     monkeypatch.setattr(settings, "entra_redirect_uri", "http://portal.marista.local/auth/callback")
     monkeypatch.setattr(settings, "entra_client_secret", "")
     assert len(auth.config_problems()) == 2
+
+
+def test_admin_sees_who_is_logged_in_and_can_end_a_session(entra):
+    adm = login(entra, "oid-adm2", "admin@marista.org.br", "Admin")
+    ana = login(entra, "oid-ana", "ana.lima@marista.org.br", "Ana Lima")
+    assert ana.get("/api/acessos/sessoes").status_code == 403
+    d = adm.get("/api/acessos/sessoes").json()
+    mine = [s for s in d["sessoes"] if s["voce"]]
+    other = next(s for s in d["sessoes"] if s["upn"] == "ana.lima@marista.org.br")
+    assert d["login"] and len(mine) == 1 and mine[0]["upn"] == "admin@marista.org.br"
+    assert other["ativo"] and other["nome"] == "Ana Lima" and not other["voce"] and "token_hash" not in other
+    assert adm.delete(f"/api/acessos/sessoes/{other['id']}", headers=CSRF).status_code == 200
+    assert ana.get("/api/me").status_code == 401
+    assert all(s["upn"] != "ana.lima@marista.org.br" for s in adm.get("/api/acessos/sessoes").json()["sessoes"])
+    assert database.list_history(5, "permissao")[0]["summary"] == "sessão encerrada pelo administrador"
+    assert adm.delete("/api/acessos/sessoes/naoexiste", headers=CSRF).status_code == 404

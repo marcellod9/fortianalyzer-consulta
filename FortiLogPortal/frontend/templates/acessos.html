@@ -16,6 +16,14 @@
   </form>
   <div class="small text-body-secondary mt-2" id="roleHint"></div>
 </div></div>
+<div class="card mb-3"><div class="card-body">
+  <div class="d-flex align-items-center gap-2 mb-2"><h6 class="mb-0 me-auto">Logados agora <span class="badge text-bg-success" id="onlineCount"></span></h6>
+    <button class="btn btn-sm btn-outline-secondary" id="sessRefresh" type="button"><i class="bi bi-arrow-clockwise"></i> Atualizar</button></div>
+  <div class="table-responsive"><table class="table table-sm small align-middle mb-1">
+    <thead><tr><th>Situação</th><th>Nome</th><th>E-mail</th><th>IP</th><th>Entrou em</th><th>Última atividade</th><th>Sessão expira</th><th></th></tr></thead>
+    <tbody id="sessions"></tbody></table></div>
+  <div class="small text-body-secondary" id="sessHint"></div>
+</div></div>
 <div class="card"><div class="card-body">
   <div class="d-flex align-items-center gap-2 mb-2"><h6 class="mb-0 me-auto">Usuários</h6>
     <input class="form-control form-control-sm" style="max-width:16rem" id="userSearch" placeholder="Filtrar por nome ou e-mail"></div>
@@ -82,6 +90,37 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   search.addEventListener("input", draw);
   load().catch((e) => FLP.toast(e.message, "danger"));
+
+  // quem está logado: atualiza sozinho a cada 30 s
+  const sessBody = document.getElementById("sessions");
+  let sessions = [];
+  async function loadSessions() {
+    const d = await FLP.api("/api/acessos/sessoes");
+    sessions = d.sessoes;
+    document.getElementById("onlineCount").textContent = d.login ? `${d.usuarios} usuário(s)` : "";
+    document.getElementById("sessHint").innerHTML = d.login
+      ? `"Ativo" usou o portal nos últimos 5 minutos. A sessão termina depois de ${d.inatividade_min} minutos sem uso. A lista atualiza sozinha a cada 30 segundos.`
+      : "";
+    sessBody.innerHTML = !d.login
+      ? `<tr><td colspan="8" class="text-body-secondary">Com o login Microsoft desativado (<code>AUTH_MODE=off</code>) o portal não sabe quem está usando.</td></tr>`
+      : sessions.map((s) => `<tr>
+        <td>${s.ativo ? `<span class="badge text-bg-success">Ativo</span>` : `<span class="badge text-bg-secondary">Ocioso há ${s.ocioso_min} min</span>`}</td>
+        <td>${esc(s.nome)}${s.voce ? ` <span class="badge text-bg-primary">você</span>` : ""}</td><td>${esc(s.upn)}</td><td>${esc(s.ip)}</td>
+        <td>${esc(s.entrou)}</td><td>${esc(s.ultima_atividade)}</td><td>${esc(s.expira)}</td>
+        <td class="text-end">${s.voce ? "" : `<button class="btn btn-sm btn-link text-danger p-0" data-end="${s.id}" title="Encerrar esta sessão (a pessoa precisa entrar de novo)"><i class="bi bi-box-arrow-right"></i></button>`}</td></tr>`).join("")
+        || `<tr><td colspan="8" class="text-body-secondary">Ninguém logado no momento.</td></tr>`;
+  }
+  sessBody.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-end]");
+    if (!b) return;
+    const s = sessions.find((x) => x.id === b.dataset.end);
+    if (!confirm(`Encerrar a sessão de ${s.upn}? A pessoa precisará entrar de novo.`)) return;
+    try { await FLP.api(`/api/acessos/sessoes/${s.id}`, { method: "DELETE" }); FLP.toast("Sessão encerrada", "success"); loadSessions(); }
+    catch (e) { FLP.toast(e.message, "danger"); }
+  });
+  document.getElementById("sessRefresh").addEventListener("click", () => loadSessions().catch((e) => FLP.toast(e.message, "danger")));
+  loadSessions().catch((e) => FLP.toast(e.message, "danger"));
+  setInterval(() => { if (!document.hidden) loadSessions().catch(() => {}); }, 30000);
 });
 </script>
 {% endblock %}
