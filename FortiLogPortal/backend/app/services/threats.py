@@ -12,6 +12,7 @@ Duas fontes oficiais da API JSON-RPC:
   sites maliciosos e phishing do filtro web, botnet do controle de aplicações e domínios maliciosos do DNS.
 """
 import hashlib
+import ipaddress
 import json
 import re
 from collections import Counter
@@ -84,6 +85,25 @@ def _severity(log: dict, default: str | None) -> str:
     return s if s in SEVERITY_ORDER else ""
 
 
+def _internal(ip: str) -> bool:
+    """Endereço da rede interna (privado ou CGNAT); IP público é destino/origem externa, não máquina nossa."""
+    try:
+        a = ipaddress.ip_address(str(ip).strip())
+    except ValueError:
+        return False
+    if a.is_loopback or a.is_link_local or a.is_multicast or a.is_unspecified:
+        return False
+    return a.is_private or a in ipaddress.ip_network("100.64.0.0/10")
+
+
+def _affected_ip(preferred, other) -> str:
+    """Máquina afetada = o lado interno do evento; sem lado interno (dois IPs públicos), nenhuma."""
+    for ip in (preferred, other):
+        if ip and _internal(ip):
+            return str(ip).strip()
+    return ""
+
+
 def threat_row(row: dict, source: str) -> dict:
     """Linha normalizada do portal (explain.normalize) -> linha de ameaça."""
     log = row.get("log_original") or {}
@@ -110,7 +130,8 @@ def threat_row(row: dict, source: str) -> dict:
         "bloqueado": row["bloqueado"], "acao": row.get("acao_original") or "",
         "usuario": row.get("usuario") or "", "ip_origem": row.get("ip_origem") or "",
         "ip_destino": row.get("ip_destino") or "", "maquina": row.get("maquina") or "",
-        "afetado_ip": (row.get("ip_destino") if inbound else row.get("ip_origem")) or "",
+        "afetado_ip": _affected_ip(row.get("ip_destino") if inbound else row.get("ip_origem"),
+                                   row.get("ip_origem") if inbound else row.get("ip_destino")),
         "destino": row.get("destino") or "", "firewall": row.get("firewall") or "",
         "arquivo": str(log.get("filename") or "")[:200], "url": row.get("url") or "",
         "referencia": str(log.get("ref") or "")[:300],

@@ -199,3 +199,22 @@ def test_traffic_with_threat_feeds_the_map():
         assert rows and all(r["fonte"] == "trafego" and r["ameaca"] for r in rows)
         inbound = [r for r in rows if r["entrada"]]
         assert inbound and all(r["pais"] for r in inbound)
+
+
+def _traffic(src, dst, srccountry="Reserved", dstcountry="United States"):
+    return {"data_hora": "2026-10-02 10:00:00", "bloqueado": True, "acao_original": "deny", "usuario": "",
+            "ip_origem": src, "ip_destino": dst, "maquina": "", "destino": f"{dst}:443", "firewall": "FW",
+            "log_original": {"threats": ["failed-connection"], "srccountry": srccountry, "dstcountry": dstcountry}}
+
+
+@pytest.mark.parametrize("src,dst,sc,dc,expected", [
+    ("10.2.3.4", "142.251.157.4", "Reserved", "United States", "10.2.3.4"),      # saída: máquina interna
+    ("118.193.56.184", "10.2.3.4", "Hong Kong", "Reserved", "10.2.3.4"),         # entrada: alvo interno
+    ("118.193.56.184", "172.217.1.1", "Hong Kong", "United States", ""),        # nenhum lado interno
+    ("172.217.1.1", "10.9.9.9", "Reserved", "Reserved", "10.9.9.9"),            # origem pública sem país
+])
+def test_affected_machine_is_never_an_external_address(src, dst, sc, dc, expected):
+    t = threats.threat_row(_traffic(src, dst, sc, dc), "trafego")
+    assert t["afetado_ip"] == expected
+    hosts = threats._hosts([t])
+    assert [h["ip"] for h in hosts] == ([expected] if expected else [])
