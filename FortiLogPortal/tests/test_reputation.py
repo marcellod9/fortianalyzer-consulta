@@ -82,3 +82,19 @@ def test_lookup_takes_fortiguard_category_from_event_or_logs():
         reputation.lookup("8.8.8.8")  # só sites
     with pytest.raises(reputation.IndicatorError):
         reputation.lookup("x.com", fortiguard_category='a"b')
+
+
+def test_site_result_is_kept_for_7_days_and_refresh_asks_again(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(reputation.database, "cache_set", lambda k, v, ttl=None: saved.__setitem__(k, (v, ttl)))
+    monkeypatch.setattr(reputation.database, "cache_get", lambda k: saved.get(k, (None,))[0])
+    calls = []
+    monkeypatch.setattr(reputation, "_fortiguard", lambda *a: calls.append(a[-1]) or _fg("Education"))
+    r = reputation.lookup("www.talkdrill.com")
+    assert not r["cache"] and any(t == reputation.KEEP_TTL for _, t in saved.values())
+    assert reputation.lookup("www.talkdrill.com")["cache"] and calls == [False]
+    assert not reputation.lookup("www.talkdrill.com", refresh=True)["cache"] and calls == [False, True]
+    # o veredito com o Sandbox concluído passa a ser o da consulta simples do mesmo site
+    monkeypatch.setattr(reputation, "sandbox_status", lambda t: {"status": "succeeded", "resultado": {"risco": "high", "iocs": []}})
+    reputation.lookup("www.talkdrill.com", sandbox_task="t-9")
+    assert reputation.lookup("www.talkdrill.com")["reputacao"] == "Malicioso"

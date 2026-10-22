@@ -165,7 +165,8 @@ class RepQuery(BaseModel):
     indicator: str = Field(min_length=1, max_length=2048)
     type: str = "auto"
     sandbox: bool = False
-    sandbox_force: bool = False  # envia de novo mesmo com análise da mesma URL nas últimas 24 h
+    sandbox_force: bool = False  # envia de novo mesmo com análise da mesma URL nos últimos 7 dias
+    refresh: bool = False        # ignora o resultado guardado (7 dias) e consulta de novo
     sandbox_task: str | None = Field(default=None, max_length=80)  # tarefa concluída a incluir no veredito
     categoria_fortiguard: str | None = Field(default=None, max_length=128)  # categoria do site vinda do log aberto
 
@@ -186,7 +187,7 @@ def v1_reputation(q: RepQuery, request: Request):
     with tracked(request, "reputacao", q.indicator, q.model_dump()) as info:
         r = reputation.lookup(q.indicator, q.type, use_sandbox=q.sandbox, username=who(request),
                               sandbox_task=q.sandbox_task, fortiguard_category=q.categoria_fortiguard,
-                              sandbox_force=q.sandbox_force)
+                              sandbox_force=q.sandbox_force, refresh=q.refresh)
         info.update(count=1, summary=f"{r['reputacao']} (score {r['risk_score']})")
     r["result_id"] = store_result("reputacao", f"Reputação {r['indicador']}", REP_COLUMNS, _rep_rows(r))
     return r

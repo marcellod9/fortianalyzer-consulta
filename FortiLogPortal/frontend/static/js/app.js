@@ -581,7 +581,7 @@ const FLP = (() => {
     } catch { return ""; }
   }
 
-  // Envia (ou reaproveita) a análise do Sandbox. force: envia de novo mesmo com análise da mesma URL em 24 h.
+  // Envia (ou reaproveita) a análise do Sandbox. force: envia de novo mesmo com análise da mesma URL em 7 dias.
   async function submitSandbox(indicator, type, extra, force = false) {
     const sub = await api("/api/v1/reputation", { method: "POST", body: { indicator, type, sandbox: true, sandbox_force: force, ...extra } });
     const sb = sub.detalhes?.sandbox;
@@ -599,7 +599,7 @@ const FLP = (() => {
     if (!card || rep.detalhes?.sandbox_resultado) return;  // já tem resultado do Sandbox no veredito
     const off = !sandboxEnabled();
     card.insertAdjacentHTML("beforeend", `<div class="mt-2 d-flex flex-wrap align-items-center gap-2"><span title="${off ? "Desabilitado: defina V1_SANDBOX_ENABLED=true em config\\.env"
-      : "Envia a URL para análise dinâmica no Sandbox do Vision One. Se a mesma URL foi analisada nas últimas 24 h, o portal reaproveita o resultado e não gasta cota."}">
+      : "Envia a URL para análise dinâmica no Sandbox do Vision One. Se a mesma URL foi analisada nos últimos 7 dias, o portal reaproveita o resultado e não gasta cota."}">
       <button type="button" class="btn btn-sm btn-outline-primary" data-sandbox ${off ? "disabled" : ""}><span class="spinner-border spinner-border-sm spinner-overlay"></span>
       <i class="bi bi-box-seam"></i> Analisar no Sandbox</button></span><span class="small text-body-secondary" data-quota></span></div>`);
     const b = card.querySelector("[data-sandbox]");
@@ -617,7 +617,7 @@ const FLP = (() => {
 
   // Acompanha a análise do Sandbox e, ao terminar, refaz a reputação com o resultado no veredito
   // (as outras fontes não são consultadas de novo). Para sozinho se a janela for fechada.
-  // info: resposta do envio; com info.reaproveitado, a análise é de um envio anterior da mesma URL (24 h).
+  // info: resposta do envio; com info.reaproveitado, a análise é de um envio anterior da mesma URL (7 dias).
   async function sandboxFlow(box, indicator, type, taskId, onResult, extra = {}, info = null) {
     const reused = !!info?.reaproveitado;
     const when = reused ? `${esc(info.enviado_em)}${info.enviado_por ? ` por ${esc(info.enviado_por)}` : ""}` : "";
@@ -716,8 +716,10 @@ const FLP = (() => {
           <div><div class="small text-body-secondary">Reputação</div><span class="verdict badge text-bg-${verdictClass(r.reputacao)}">${esc(r.reputacao)}</span></div>
           <div style="min-width:180px"><div class="small text-body-secondary">Risk Score <b>${esc(r.risk_score)}</b>/100</div>
             <div class="risk-bar"><div style="width:${Math.max(3, +r.risk_score || 0)}%;background:${riskColor(+r.risk_score || 0)}"></div></div></div>
-          <div class="ms-auto small text-body-secondary">${esc(`Consultado em ${r.consultado_em}${r.cache ? " (cache)" : ""}` +
-            (r.periodo ? ` · janela ${r.periodo.inicio} a ${r.periodo.fim}` : ""))}</div>
+          <div class="ms-auto small text-body-secondary text-end">${esc(`Consultado em ${r.consultado_em}` +
+            (r.periodo ? ` · janela ${r.periodo.inicio} a ${r.periodo.fim}` : ""))}
+            ${r.cache ? `<div><i class="bi bi-archive"></i> Resultado guardado (vale 7 dias)
+              <button type="button" class="btn btn-sm btn-link p-0 align-baseline" data-act="rep-refresh">Consultar de novo</button></div>` : ""}</div>
         </div>
         <dl class="row small mb-0">
           ${row("Categoria", esc(r.categoria ?? "-"))}
@@ -734,6 +736,15 @@ const FLP = (() => {
         ${errs.length ? `<div class="alert alert-warning small mt-2 mb-0"><b>Fontes que falharam:</b>${errs.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join("")}</div>` : ""}
         <details class="mt-2"><summary class="small">Detalhes técnicos (FortiGuard e Sandbox)</summary><pre class="raw mt-2">${esc(JSON.stringify(r.detalhes, null, 2))}</pre></details>
       </div></div>`;
+    // resultado guardado (7 dias): "Consultar de novo" pergunta ao FortiGuard outra vez (ex.: depois de uma recategorização)
+    const again = container.querySelector('[data-act="rep-refresh"]');
+    if (again) again.addEventListener("click", async () => {
+      again.disabled = true;
+      try {
+        const body = { indicator: r.indicador, type: r.tipo, refresh: true, ...fortiguardBody(r) };
+        renderReputation(container, await api("/api/v1/reputation", { method: "POST", body }));
+      } catch (e) { again.disabled = false; toast(e.message, "danger"); }
+    });
   }
 
   // ---- situação da máquina no Vision One (agente Trend e alertas do Workbench) -------------------

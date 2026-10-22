@@ -40,7 +40,8 @@ FORTIGUARD_RISK = {
 }
 FORTIGUARD_UNRATED = {"unrated", "not rated", "unknown"}
 FORTIGUARD_LOOKBACK = timedelta(hours=24)
-FORTIGUARD_RATING_TTL = 24 * 3600   # a classificação de um site muda pouco: 1 dia em cache
+KEEP_TTL = 7 * 24 * 3600            # consultas de site ficam 7 dias no banco local e voltam prontas na repetição
+FORTIGUARD_RATING_TTL = KEEP_TTL     # a classificação de um site muda pouco
 SAFE_CATEGORY = re.compile(r"^[^\x00-\x1f\"\\<>]{1,128}$")
 
 
@@ -85,14 +86,14 @@ def parse_indicator(raw: str, forced_type: str | None = None) -> tuple[str, str]
     raise IndicatorError("Tipo de indicador inválido.")
 
 
-def fortiguard_from_logs(host: str) -> dict:
+def fortiguard_from_logs(host: str, refresh: bool = False) -> dict:
     """Categoria do FortiGuard do site no log mais recente do filtro web (ou DNS) das últimas 24 h."""
     from .faz_filters import LogQuery  # import local: evita ciclo reputação <-> pesquisa de logs
     from .fortianalyzer import FazError
     from .logsearch import run_query
 
     key = f"fg:{host}"
-    hit = database.cache_get(key)
+    hit = None if refresh else database.cache_get(key)
     if hit is not None:
         return hit
     end = datetime.now().replace(microsecond=0)
@@ -109,16 +110,17 @@ def fortiguard_from_logs(host: str) -> dict:
     except (FazError, ValueError) as e:  # sem FortiAnalyzer a reputação continua só com o Vision One
         out["erro"] = str(e)
         return out
-    database.cache_set(key, out)
+    # categoria achada fica 7 dias; "sem acesso nos logs" fica pouco, porque o site pode ser acessado a qualquer momento
+    database.cache_set(key, out, ttl=KEEP_TTL if out["categoria"] else None)
     return out
 
 
-def fortiguard_from_fortigate(host: str) -> dict:
+def fortiguard_from_fortigate(host: str, refresh: bool = False) -> dict:
     """Classificação do FortiGuard perguntada a um FortiGate (FGT_URL): vale para qualquer site, mesmo não acessado."""
     from . import fortigate
 
     key = f"fgt-rating2:{host}"  # 2: a categoria deixou de vir trocada pelo grupo (2026-10-22)
-    hit = database.cache_get(key)
+    hit = None if refresh else database.cache_get(key)
     if hit is not None:
         return hit
     r = fortigate.rating_lookup(host) if fortigate.configured() else fortigate.rating_via_faz(host)
@@ -129,7 +131,7 @@ def fortiguard_from_fortigate(host: str) -> dict:
     return out
 
 
-def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool) -> dict | None:
+def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool, refresh: bool = False) -> dict | None:
     if ioc_type == "ip":
         return None
     if category:
@@ -139,12 +141,12 @@ def _fortiguard(ioc_type: str, value: str, category: str | None, from_faz: bool)
     fgt_err = None
     if fortigate.configured() or fortigate.proxy_available():
         try:
-            return fortiguard_from_fortigate(host)
+            return fortiguard_from_fortigate(host, refresh)
         except fortigate.FgtError as e:  # sem o FortiGate, a categoria ainda pode vir dos logs
             fgt_err = str(e)
     if not from_faz:
         return {"categoria": None, "origem": "fortiguard", "visto_em": None, "erro": fgt_err} if fgt_err else None
-    out = fortiguard_from_logs(host)
+    out = fortiguard_from_logs(host, refresh)
     if fgt_err:
         out = {**out, "aviso": f"Consulta ao FortiGuard pelo FortiGate falhou ({fgt_err}); categoria procurada nos logs."}
     return out
@@ -160,10 +162,11 @@ PERMISSION_HINT = {
 
 def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = False, username: str = "",
            sandbox_task: str | None = None, fortiguard_category: str | None = None,
-           fortiguard_from_faz: bool = True, sandbox_force: bool = False) -> dict:
+           fortiguard_from_faz: bool = True, sandbox_force: bool = False, refresh: bool = False) -> dict:
     """Reputação consolidada. sandbox_task: tarefa do Sandbox já concluída, para entrar no veredito.
 
-    use_sandbox reaproveita a análise da mesma URL das últimas 24 h; sandbox_force envia de novo.
+    use_sandbox reaproveita a análise da mesma URL dos últimos 7 dias; sandbox_force envia de novo.
+    O resultado fica 7 dias no banco: a mesma consulta volta pronta; refresh consulta o FortiGuard de novo.
 
     fortiguard_category: categoria do site já conhecida (ex.: do log aberto na tela). Sem ela, e com
     fortiguard_from_faz, o portal procura a categoria nos logs do FortiAnalyzer das últimas 24 h.
@@ -175,16 +178,18 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
         fortiguard_category = fortiguard_category.strip() or None
         if fortiguard_category and not SAFE_CATEGORY.match(fortiguard_category):
             raise IndicatorError("Categoria do FortiGuard inválida.")
-    cache_key = "rep2:" + hashlib.sha1(f"{ioc_type}:{value}:{use_sandbox}:{sandbox_task}:"
-                                      f"{fortiguard_category}:{fortiguard_from_faz}".encode()).hexdigest()
-    cached = None if use_sandbox else database.cache_get(cache_key)
+    def key_for(task):
+        return "rep2:" + hashlib.sha1(f"{ioc_type}:{value}:False:{task}:{fortiguard_category}:"
+                                      f"{fortiguard_from_faz}".encode()).hexdigest()
+    cache_key = key_for(sandbox_task)
+    cached = None if use_sandbox or refresh else database.cache_get(cache_key)
     if cached:
         cached["cache"] = True
         return cached
 
     # a categoria do FortiGuard vem do FortiGate/FortiAnalyzer: busca em paralelo com o Sandbox
     pool = ThreadPoolExecutor(max_workers=1)
-    fg_future = pool.submit(_fortiguard, ioc_type, value, fortiguard_category, fortiguard_from_faz)
+    fg_future = pool.submit(_fortiguard, ioc_type, value, fortiguard_category, fortiguard_from_faz, refresh)
     pool.shutdown(wait=False)
 
     sources: dict[str, dict] = {}
@@ -220,7 +225,11 @@ def lookup(raw: str, forced_type: str | None = None, *, use_sandbox: bool = Fals
     result = consolidate(ioc_type, value, sources, errors, fortiguard)
     result["cache"] = False
     if not errors and not use_sandbox:
-        database.cache_set(cache_key, result)
+        # com a categoria (ou o Sandbox) o resultado fica 7 dias; sem nada, só o cache curto padrão
+        ttl = KEEP_TTL if (fortiguard or {}).get("categoria") or sources.get("sandbox_result") else None
+        database.cache_set(cache_key, result, ttl=ttl)
+        if sandbox_task:  # a consulta simples do mesmo site passa a trazer o veredito já com o Sandbox
+            database.cache_set(key_for(None), result, ttl=ttl)
     database.add_ioc_lookup(value, ioc_type, result["reputacao"], result["risk_score"], ", ".join(result["fontes"]))
     return result
 
@@ -261,8 +270,8 @@ def sandbox_status(task_id: str) -> dict:
     return out
 
 
-# ---- economia do Sandbox: a mesma URL não é enviada de novo em 24 h ------------------------
-SANDBOX_REUSE_HOURS = 24
+# ---- economia do Sandbox: a mesma URL não é enviada de novo em 7 dias ----------------------
+SANDBOX_REUSE_HOURS = 7 * 24   # a mesma URL não é enviada de novo por 7 dias (cada envio custa 2 créditos)
 QUOTA_KEY = "v1:sandbox-quota"
 QUOTA_TTL = 300
 
@@ -274,7 +283,7 @@ def sandbox_key(url: str) -> str:
 
 
 def reusable_sandbox(url: str) -> dict | None:
-    """Análise da mesma URL nas últimas 24 h que ainda vale: concluída ou em andamento (consultar não gasta cota)."""
+    """Análise da mesma URL nos últimos 7 dias que ainda vale: concluída ou em andamento (consultar não gasta cota)."""
     for run in database.sandbox_runs_for(sandbox_key(url), time.time() - SANDBOX_REUSE_HOURS * 3600):
         if run["status"] == "running":
             try:
@@ -305,7 +314,7 @@ def sandbox_quota(refresh: bool = False) -> dict:
 
 
 def sandbox_submit(url: str, username: str = "", force: bool = False) -> dict:
-    """Envia a URL ao Sandbox ou, sem force, reaproveita a análise da mesma URL das últimas 24 h."""
+    """Envia a URL ao Sandbox ou, sem force, reaproveita a análise da mesma URL dos últimos 7 dias."""
     if not force:
         run = reusable_sandbox(url)
         if run:

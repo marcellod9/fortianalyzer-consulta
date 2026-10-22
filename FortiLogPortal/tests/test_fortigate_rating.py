@@ -13,7 +13,7 @@ def test_parse_rating_accepts_list_dict_and_id_only():
 def test_fortigate_rating_is_used_for_sites_never_accessed(monkeypatch):
     monkeypatch.setattr(fortigate, "configured", lambda: True)
     monkeypatch.setattr(fortigate, "rating_lookup", lambda host: {"categoria": "Phishing", "categoria_id": 59})
-    monkeypatch.setattr(reputation, "fortiguard_from_logs", lambda host: (_ for _ in ()).throw(AssertionError("logs")))
+    monkeypatch.setattr(reputation, "fortiguard_from_logs", lambda host, refresh=False: (_ for _ in ()).throw(AssertionError("logs")))
     monkeypatch.setattr(reputation.database, "cache_get", lambda k: None)
     monkeypatch.setattr(reputation.database, "cache_set", lambda *a, **k: None)
     fg = reputation._fortiguard("url", "http://wrs49.winshipway.com/", None, True)
@@ -27,7 +27,7 @@ def test_fortigate_failure_falls_back_to_logs(monkeypatch):
     monkeypatch.setattr(fortigate, "rating_lookup", fail)
     monkeypatch.setattr(reputation.database, "cache_get", lambda k: None)
     monkeypatch.setattr(reputation, "fortiguard_from_logs",
-                        lambda host: {"categoria": "Shopping", "origem": "logs", "visto_em": None, "erro": None})
+                        lambda host, refresh=False: {"categoria": "Shopping", "origem": "logs", "visto_em": None, "erro": None})
     fg = reputation._fortiguard("domain", "loja.example", None, True)
     assert fg["categoria"] == "Shopping" and "401" in fg["aviso"]
     assert reputation._fortiguard("ip", "8.8.8.8", None, True) is None

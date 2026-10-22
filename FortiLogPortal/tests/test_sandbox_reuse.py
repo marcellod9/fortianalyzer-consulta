@@ -80,7 +80,7 @@ def test_old_run_and_force_send_again(v1):
     assert forced["reaproveitado"] is False and forced["task_id"] != first["task_id"] and len(v1.submitted) == 2
     with database.connect() as con:
         con.execute("UPDATE sandbox_run SET submitted_at=? WHERE url=?",
-                    (time.time() - 25 * 3600, "http://reuso-force.example/"))
+                    (time.time() - 8 * 24 * 3600, "http://reuso-force.example/"))
     assert reputation.sandbox_submit("http://reuso-force.example/", "ana")["reaproveitado"] is False
 
 
@@ -123,3 +123,11 @@ def test_sandbox_403_says_which_permission_to_enable(v1, monkeypatch):
     r = reputation.lookup("http://sem-permissao.example/", "url", use_sandbox=True)
     assert "Threat Intelligence > Sandbox Analysis" in r["erros"]["sandbox"]
     assert "Submit object" in r["erros"]["sandbox"]
+
+
+def test_reused_within_7_days(v1):
+    first = reputation.sandbox_submit("http://reuso-7d.example/", "ana")
+    with database.connect() as con:
+        con.execute("UPDATE sandbox_run SET submitted_at=? WHERE url=?", (time.time() - 6 * 24 * 3600, "http://reuso-7d.example/"))
+    again = reputation.sandbox_submit("http://reuso-7d.example/", "ana")
+    assert again["reaproveitado"] is True and again["task_id"] == first["task_id"] and len(v1.submitted) == 1

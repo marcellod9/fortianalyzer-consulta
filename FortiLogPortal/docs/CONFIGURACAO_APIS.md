@@ -217,7 +217,7 @@ Para URLs, o Sandbox dá uma análise própria (`V1_SANDBOX_ENABLED=true`; conso
 
 **Economia do Sandbox.** Pela tabela de créditos da Trend, cada envio ao Sandbox (manual ou pela
 API) custa 2 créditos; consultar o andamento e o resultado não custa. Por isso o portal guarda cada
-envio no banco local e, se a mesma URL foi enviada nas últimas 24 h, reaproveita aquela análise
+envio no banco local e, se a mesma URL foi enviada nos últimos 7 dias, reaproveita aquela análise
 (concluída ou ainda em andamento) em vez de enviar de novo. A tela avisa "Resultado reaproveitado" e
 oferece *Analisar de novo*, que pede confirmação e faz um envio novo. Antes de cada envio o portal
 consulta a cota do dia: com cota zerada, o envio não sai; se a chave não tiver permissão para ver a
