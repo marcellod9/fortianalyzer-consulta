@@ -144,3 +144,13 @@ quiser mudar.
 | AADSTS50011 | o endereço `https://<servidor>/auth/callback` não está cadastrado no Entra ID |
 | Erro de certificado ao consultar o FAZ | `FAZ_VERIFY_TLS` aponta para um caminho do Windows ou para um arquivo que o usuário `radar` não lê |
 | `update.sh` não baixa | o servidor não alcança o GitHub: use `--zip` |
+
+## Fuso horário
+
+O FortiAnalyzer recebe as datas das buscas no horário local, sem fuso. Se a VM
+estiver em UTC e o FortiAnalyzer em horário de Brasília, uma busca de "última
+hora" cai 3 horas no futuro e o FortiAnalyzer responde "get log search error.
+Internal Error.". Por isso o serviço roda com `TZ=America/Sao_Paulo`, sem
+mudar o fuso da VM (que pode ter outros sistemas). Para outro fuso, ponha
+`PORTAL_TZ=...` no `config/.env` (ou rode `sudo RADAR_TZ=... deploy/install.sh`).
+O fuso em uso aparece na linha "Radar Marista ... iniciado" do log.

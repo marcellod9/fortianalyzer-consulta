@@ -3,6 +3,7 @@
 Executar:  python backend\\run.py   (ou scripts\\start.bat)
 """
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
@@ -36,8 +37,9 @@ async def lifespan(_app: FastAPI):
 def _startup():
     database.init_db()
     database.cache_purge()
-    log.info("Radar Marista %s iniciado (demo=%s, FAZ=%s, Vision One=%s)", __version__, settings.demo,
-             settings.faz_url or "não configurado", settings.v1_base_url if settings.v1_token else "não configurado")
+    log.info("Radar Marista %s iniciado (demo=%s, FAZ=%s, Vision One=%s, fuso=%s %s)", __version__, settings.demo,
+             settings.faz_url or "não configurado", settings.v1_base_url if settings.v1_token else "não configurado",
+             os.environ.get("TZ") or "sistema", time.strftime("%Z %z"))
     if settings.auth_enabled:
         log.info("Login Microsoft Entra ID ativo (redirect %s, MFA pelo Acesso Condicional%s)", settings.redirect_uri,
                  f" + contexto {settings.entra_auth_context}" if settings.entra_auth_context else "")

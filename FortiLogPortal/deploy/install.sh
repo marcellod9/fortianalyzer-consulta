@@ -38,6 +38,13 @@ env_port() {
   [ -f "$f" ] && v="$(sed -n -E 's/^\s*PORTAL_PORT\s*=\s*"?([0-9]+)"?\s*\r?$/\1/p' "$f" | tail -1)"
   echo "${v:-8000}"
 }
+# fuso horário do portal: o FortiAnalyzer recebe as datas no horário local,
+# então o serviço precisa estar no mesmo fuso que ele (a VM pode estar em UTC)
+env_tz() {
+  local f="$APP_DIR/config/.env" v=""
+  [ -f "$f" ] && v="$(sed -n -E 's/^\s*PORTAL_TZ\s*=\s*"?([A-Za-z0-9_+/-]+)"?\s*\r?$/\1/p' "$f" | tail -1)"
+  echo "${v:-America/Sao_Paulo}"
+}
 # quem escuta na porta TCP $1: "nome[pid]" de cada processo, vazio se livre
 port_owners() {
   ss -ltnpH "sport = :$1" 2>/dev/null | grep -oE '\("[^"]+",pid=[0-9]+' | sed -E 's/\("([^"]+)",pid=([0-9]+)/\1[\2]/' | sort -u | tr '\n' ' ' || true
@@ -83,7 +90,7 @@ fi
 say "1/7 Pacotes do sistema"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-PKGS=(python3 python3-venv python3-pip rsync curl unzip ca-certificates iproute2)
+PKGS=(python3 python3-venv python3-pip rsync curl unzip ca-certificates iproute2 tzdata)
 [ "$RADAR_NGINX" = 1 ] && PKGS+=(nginx ssl-cert)
 apt-get install -y -q "${PKGS[@]}"
 
@@ -141,7 +148,14 @@ fi
 "$APP_DIR/.venv/bin/python" -m compileall -q "$APP_DIR/backend" >/dev/null || true
 
 say "6/7 Serviço systemd ($SERVICE)"
-sed "s/--port 8000/--port $PORT/" "$APP_DIR/deploy/radar-marista.service" > "/etc/systemd/system/$SERVICE.service"
+TZ_PORTAL="${RADAR_TZ:-$(env_tz)}"
+if [ ! -f "/usr/share/zoneinfo/$TZ_PORTAL" ]; then
+  warn "Fuso horário desconhecido: $TZ_PORTAL. Usando America/Sao_Paulo."
+  TZ_PORTAL=America/Sao_Paulo
+fi
+echo "Fuso horário do portal: $TZ_PORTAL (o do sistema não muda: $(date +%Z))"
+sed -e "s/--port 8000/--port $PORT/" -e "s|^Environment=TZ=.*|Environment=TZ=$TZ_PORTAL|" \
+  "$APP_DIR/deploy/radar-marista.service" > "/etc/systemd/system/$SERVICE.service"
 chmod 644 "/etc/systemd/system/$SERVICE.service"
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null

@@ -8,6 +8,8 @@ User=radar
 Group=radar
 WorkingDirectory=/opt/radar-marista
 Environment=PORTAL_ENV_FILE=/opt/radar-marista/config/.env
+# fuso do FortiAnalyzer (as buscas usam horário local); muda só o portal, não a VM
+Environment=TZ=America/Sao_Paulo
 # só escuta em 127.0.0.1: o acesso de fora passa pelo nginx (HTTPS)
 ExecStart=/opt/radar-marista/.venv/bin/uvicorn app.main:app --app-dir /opt/radar-marista/backend \
     --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header

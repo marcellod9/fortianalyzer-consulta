@@ -58,7 +58,7 @@ def run_query(q: LogQuery, use_cache: bool = True, save_cache: bool = True, poli
 # Um log não muda depois de gravado no FAZ: os eventos lidos ficam no banco local e a consulta seguinte com os
 # mesmos filtros só busca o trecho que ainda não foi lido. O trecho novo começa um pouco antes do fim guardado,
 # pelos logs que chegam atrasados ao FAZ.
-KEEP_PREFIX = "rows1:"
+KEEP_PREFIX = "rows2:"  # rows2: guardados já no fuso certo (PORTAL_TZ)
 LATE_LOGS = timedelta(minutes=15)
 
 

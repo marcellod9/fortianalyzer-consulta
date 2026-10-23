@@ -14,6 +14,14 @@ AUTH_OFF = ("off", "false", "0", "no", "nao", "não", "desligado")
 ENV_FILE = Path(os.getenv("PORTAL_ENV_FILE", BASE_DIR / "config" / ".env"))
 load_dotenv(ENV_FILE, override=False)
 
+# O FortiAnalyzer recebe as datas das buscas no horário local, sem fuso.
+# PORTAL_TZ (ex.: America/Sao_Paulo) põe o portal no fuso dele mesmo se o
+# servidor estiver em UTC. No Windows o fuso do sistema continua valendo.
+if os.getenv("PORTAL_TZ", "").strip() and hasattr(__import__("time"), "tzset"):
+    import time as _time
+    os.environ["TZ"] = os.environ["PORTAL_TZ"].strip()
+    _time.tzset()
+
 
 def _bool(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in ("true", "1", "yes", "sim")
