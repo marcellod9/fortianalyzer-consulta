@@ -58,7 +58,8 @@ def config_problems() -> list[str]:
     s = settings
     p = []
     if s.auth_mode not in ("off", "entra"):
-        p.append("AUTH_MODE deve ser off ou entra")
+        p.append(f"AUTH_MODE={s.auth_mode} não é um valor previsto: use AUTH_MODE=entra (o login Microsoft foi ligado"
+                 " mesmo assim) ou AUTH_MODE=off")
     if not s.auth_enabled:
         return p
     if not GUID.match(s.entra_tenant_id):

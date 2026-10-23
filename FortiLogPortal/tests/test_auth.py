@@ -212,3 +212,12 @@ def test_admin_sees_who_is_logged_in_and_can_end_a_session(entra):
     assert all(s["upn"] != "ana.lima@marista.org.br" for s in adm.get("/api/acessos/sessoes").json()["sessoes"])
     assert database.list_history(5, "permissao")[0]["summary"] == "sessão encerrada pelo administrador"
     assert adm.delete("/api/acessos/sessoes/naoexiste", headers=CSRF).status_code == 404
+
+
+@pytest.mark.parametrize("value,enabled", [("entra", True), ("on", True), ("ENTRA", True), ("off", False), ("false", False)])
+def test_auth_mode_typo_turns_login_on_not_off(monkeypatch, value, enabled):
+    from app.services import auth as auth_service
+    monkeypatch.setattr(settings, "auth_mode", value.lower())
+    assert settings.auth_enabled is enabled
+    if value == "on":
+        assert any("AUTH_MODE=on" in p for p in auth_service.config_problems())

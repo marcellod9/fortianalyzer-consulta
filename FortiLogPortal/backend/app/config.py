@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../FortiLogPortal
+AUTH_OFF = ("off", "false", "0", "no", "nao", "não", "desligado")
 ENV_FILE = Path(os.getenv("PORTAL_ENV_FILE", BASE_DIR / "config" / ".env"))
 load_dotenv(ENV_FILE, override=False)
 
@@ -106,7 +107,8 @@ class Settings:
 
     @property
     def auth_enabled(self) -> bool:
-        return self.auth_mode == "entra"
+        # só "off" (ou equivalente) desliga: um valor digitado errado (ex.: "on") liga o login em vez de abrir o portal
+        return self.auth_mode not in AUTH_OFF
 
     @property
     def redirect_uri(self) -> str:
