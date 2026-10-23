@@ -152,3 +152,23 @@ def test_machine_lookup_reports_unmanaged_endpoint(monkeypatch):
 def test_only_windows_filter():
     assert tc.is_windows({"sistema": "Windows 11"}) and tc.is_windows({"sistema": "windows"})
     assert not any(tc.is_windows({"sistema": v}) for v in ("", "Linux", "macOS", "Android", "FortiAP"))
+
+
+def test_fortiview_retries_with_a_smaller_limit_and_remembers_it():
+    from app.services.fortianalyzer import FazClient
+    from test_clients import FakeResp, FakeSession
+    limits = []
+
+    def handler(method, url, body, kw):
+        p = body["params"][0]
+        if body["method"] == "add":
+            limits.append(p["limit"])
+            if p["limit"] > 1000:
+                return FakeResp(200, {"result": None, "error": {"code": -32002, "message": "Invalid params: invalid value for limit"}})
+            return FakeResp(200, {"result": {"tid": 3}})
+        return FakeResp(200, {"result": {"percentage": 100, "data": [{"srcip": "10.0.0.1"}]}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    rows = c.fortiview("root", "top-sources", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=3000)
+    assert rows == [{"srcip": "10.0.0.1"}] and limits == [3000, 2000, 1000]
+    c.fortiview("root", "top-sources", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=3000)
+    assert limits[-1] == 1000  # lembrou o limite aceito

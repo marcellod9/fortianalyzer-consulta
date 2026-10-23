@@ -54,6 +54,7 @@ class FazClient:
         self._id_lock = threading.Lock()
         self._http = session or requests.Session()
         self._alias_off: set[str] = set()  # tipos de log em que o nome do FAZ (FAZ_LOGTYPE) foi recusado
+        self._fortiview_max: dict[str, int] = {}  # maior limite de linhas aceito em cada tela do FortiView
         # várias pessoas (e a atualização automática de Ameaças) usam o mesmo admin REST: as buscas entram
         # em fila, no máximo FAZ_PARALLEL_SEARCHES ao mesmo tempo (buscas simultâneas falham no FAZ)
         self._search_slots = threading.BoundedSemaphore(max(1, settings.faz_parallel_searches))
@@ -211,9 +212,28 @@ class FazClient:
         return {"alerts": alerts[:limit], "mais": len(alerts) >= limit}
 
     # ---- FortiView ---------------------------------------------------------------
+    FORTIVIEW_LIMITS = (2000, 1000, 500, 100)  # se o FAZ recusar o limite pedido, tenta estes (do maior ao menor)
+
     def fortiview(self, adom: str, view: str, start: str, end: str, devices: list[str] | None = None,
                   limit: int = 50, sort_by: str | None = None) -> list[dict]:
-        """Mesma consulta das telas FortiView do FAZ (ex.: Threats > Top Threats)."""
+        """Mesma consulta das telas FortiView do FAZ (ex.: Threats > Top Threats).
+
+        O máximo de linhas aceito varia com a versão e a tela ("invalid value for limit"): nesse caso repete com um
+        limite menor e lembra o que funcionou para a próxima vez.
+        """
+        limit = min(limit, self._fortiview_max.get(view, limit))
+        while True:
+            try:
+                return self._fortiview(adom, view, start, end, devices, limit, sort_by)
+            except FazError as e:
+                smaller = [n for n in self.FORTIVIEW_LIMITS if n < limit]
+                if "invalid value for limit" not in str(e).lower() or not smaller:
+                    raise
+                limit = smaller[0]
+                self._fortiview_max[view] = limit
+
+    def _fortiview(self, adom: str, view: str, start: str, end: str, devices: list[str] | None,
+                   limit: int, sort_by: str | None) -> list[dict]:
         base = f"/fortiview/adom/{adom}/{view}/run"
         device = [{"devid": d} for d in devices] if devices else [{"devname": "All_Device"}]
         params = {"apiver": 3, "device": device, "limit": limit, "offset": 0, "case-sensitive": False,
