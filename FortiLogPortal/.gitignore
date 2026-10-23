@@ -1,0 +1,16 @@
+# Credenciais e dados locais: nunca versionar
+config/.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+database/*.db
+database/*.db-*
+logs/*.log*
+exports/*
+!exports/.gitkeep
+cache/*
+!cache/.gitkeep
+backups/
+.versao-instalada
+*.whl

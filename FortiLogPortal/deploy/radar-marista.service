@@ -1,0 +1,30 @@
+[Unit]
+Description=Radar Marista (consultas FortiAnalyzer, FortiGate e Trend Vision One)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=radar
+Group=radar
+WorkingDirectory=/opt/radar-marista
+Environment=PORTAL_ENV_FILE=/opt/radar-marista/config/.env
+# fuso do FortiAnalyzer (as buscas usam horário local); muda só o portal, não a VM
+Environment=TZ=America/Sao_Paulo
+# só escuta em 127.0.0.1: o acesso de fora passa pelo nginx (HTTPS)
+ExecStart=/opt/radar-marista/.venv/bin/uvicorn app.main:app --app-dir /opt/radar-marista/backend \
+    --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+RestartSec=5
+# o código fica só leitura; o portal grava apenas banco, logs, exportações e cache
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/radar-marista/database /opt/radar-marista/logs /opt/radar-marista/exports /opt/radar-marista/cache /opt/radar-marista/pedidos
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

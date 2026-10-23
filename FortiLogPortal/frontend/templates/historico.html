@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Histórico{% endblock %}
+{% block heading %}<i class="bi bi-clock-history"></i> Histórico de consultas{% endblock %}
+{% block content %}
+<form id="form" class="row g-2 mb-3">
+  <div class="col-md-3"><select class="form-select form-select-sm" name="type">
+    <option value="">Todos os tipos</option><option value="bloqueios">Bloqueios</option><option value="diagnostico">Diagnóstico de acesso</option><option value="logs">Logs</option><option value="logs-tempo-real">Logs em tempo real</option>
+    <option value="reputacao">Reputação</option><option value="correlacao">Correlação</option><option value="alertas">Alertas</option><option value="maquina">Máquina no Vision One</option><option value="relatorio">Relatório</option><option value="ameacas">Ameaças</option><option value="trend-inativo">Trend inativo</option>
+    <option value="exportacao">Exportação</option>
+    <option value="login">Login</option><option value="permissao">Permissão</option></select></div>
+  <div class="col-md-4"><input class="form-control form-control-sm" name="q" placeholder="Termo ou usuário"></div>
+  <div class="col-md-2"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-funnel"></i> Filtrar</button></div>
+  <div class="col-md-3 text-end" id="exports">
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-fmt="csv"><i class="bi bi-download"></i> CSV</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-fmt="xlsx"><i class="bi bi-download"></i> XLSX</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-fmt="pdf"><i class="bi bi-download"></i> PDF</button>
+  </div>
+</form>
+<div class="table-responsive"><table class="table table-sm table-striped table-logs">
+  <thead><tr><th>Data/hora</th><th>Usuário</th><th>Tipo</th><th>Termo pesquisado</th><th>Status</th><th>Resultados</th><th>Bloqueios</th><th>Resultado</th><th>Tempo</th></tr></thead>
+  <tbody id="rows"></tbody></table></div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("form");
+  const qs = () => new URLSearchParams(Object.entries(FLP.formData(form)).filter(([k, v]) => v && typeof v === "string")).toString();
+  const badge = { ok: "success", erro: "danger", invalida: "warning" };
+  async function load() {
+    try {
+      const rows = await FLP.api("/api/history?limit=500&" + qs());
+      document.getElementById("rows").innerHTML = rows.map((r) => `<tr>
+        <td>${FLP.esc(r.ts)}</td><td>${FLP.esc(r.username)}</td><td>${FLP.esc(r.query_type)}</td>
+        <td class="cell-trunc" title="${FLP.esc(r.term)}">${FLP.esc(r.term)}</td>
+        <td><span class="badge text-bg-${badge[r.status] || "secondary"}">${FLP.esc(r.status)}</span></td>
+        <td>${r.result_count}</td><td>${r.blocked_count}</td>
+        <td class="cell-trunc" title="${FLP.esc(r.summary)}">${FLP.esc(r.summary)}</td><td>${r.duration_ms ?? ""} ms</td></tr>`).join("")
+        || `<tr><td colspan="9" class="text-body-secondary">Nenhuma consulta registrada.</td></tr>`;
+    } catch (e) { FLP.toast(e.message, "danger"); }
+  }
+  form.addEventListener("submit", (ev) => { ev.preventDefault(); load(); });
+  document.querySelectorAll("#exports button").forEach((b) => b.addEventListener("click", () => FLP.download(`/api/export/history.${b.dataset.fmt}?${qs()}`)));
+  load();
+});
+</script>
+{% endblock %}
