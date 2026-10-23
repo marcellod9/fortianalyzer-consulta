@@ -251,3 +251,31 @@ def test_events_are_kept_7_days_and_only_the_new_part_is_searched(monkeypatch):
     calls.clear()  # período começa antes do guardado ou "buscar de novo": consulta inteira
     rows, _ = threats._read_sources(first, 100, keep=True, reuse=False)
     assert all(c[1] == "2026-10-19 12:00:00" for c in calls) and len(calls) == len(threats.SOURCES)
+
+
+def test_automatic_refresh_prepares_the_default_threats_query(monkeypatch):
+    calls = []
+
+    def fake(lq, *a, **k):
+        calls.append(lq.faz_time("start"))
+        when = (lq.start + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        row = {"data_hora": when, "bloqueado": True, "acao_original": "blocked", "usuario": "", "ip_origem": "10.0.0.7",
+               "ip_destino": "8.8.4.4", "maquina": "", "destino": "8.8.4.4:53", "firewall": "FW-WARM",
+               "log_original": {"attack": "W", "virus": "W", "threats": ["w"], "warm": when}}
+        return {"total": 1, "returned": 1, "rows": [row], "mais": False}
+    monkeypatch.setattr(threats, "run_query", fake)
+    monkeypatch.setattr(threats, "_search", lambda lq, expr: fake(lq))
+    monkeypatch.setattr(threats.settings, "faz_default_adom", "warmtest")
+    r = threats.warm(hours=24)
+    assert r["guardados"] == 0 and len(calls) == len(threats.SOURCES)
+    calls.clear()
+    # a tela com o padrão (ADOM padrão, todos os firewalls, último 1 dia) só busca os minutos novos
+    end = datetime.now().replace(second=0, microsecond=0) + timedelta(minutes=10)
+    q = threats.ThreatQuery(start=end - timedelta(hours=24), end=end)
+    _rows, fontes = threats._read_sources(q, threats.ROWS_PER_SOURCE, keep=True, reuse=True)
+    assert all(f["guardados"] == 1 for f in fontes.values())
+    assert all(c >= (end - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S") for c in calls)
+
+
+def test_automatic_refresh_is_off_in_demo():
+    assert threats.start_warmer() is None  # testes rodam com PORTAL_DEMO=true

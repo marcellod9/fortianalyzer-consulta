@@ -117,8 +117,9 @@ o código, instala dependências novas e reinicia o serviço. `.env`, banco, log
 Opções: `--force` (reinstala mesmo na mesma versão), `--zip arquivo.zip` (servidor sem acesso ao GitHub: baixe o
 .zip em outra máquina e copie), `--branch nome`.
 
-Configurações novas que aparecerem no `config/.env.example` precisam ser copiadas à mão para o `.env`, como no
-Windows.
+No final, o script lista o que mudou desde a versão instalada (as mudanças publicadas no GitHub) e as opções novas
+do `config/.env.example` que ainda não estão no seu `.env`. Essas opções têm um padrão; copie para o `.env` só se
+quiser mudar.
 
 ## Operação do dia a dia
 

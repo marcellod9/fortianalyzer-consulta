@@ -12,7 +12,7 @@ set -euo pipefail
 
 APP_DIR=/opt/radar-marista
 ENV_FILE="$APP_DIR/config/.env"
-REPO="" BRANCH="" FORCE=0 ZIP=""
+REPO="" BRANCH="" FORCE=0 ZIP="" INSTALLED=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
@@ -52,3 +52,45 @@ unzip -q "$ZIP" -d "$WORK/src"
 SRC="$(find "$WORK/src" -maxdepth 5 -type f -path '*/FortiLogPortal/deploy/install.sh' | head -1)"
 [ -n "$SRC" ] || { echo "O .zip não tem a pasta FortiLogPortal/deploy/install.sh."; exit 1; }
 RADAR_VERSION="$LATEST" bash "$SRC"
+
+# ---- o que mudou -------------------------------------------------------------------------------
+if [ -n "$LATEST" ]; then
+  echo
+  REPO="$REPO" OLD="${INSTALLED:-}" NEW="$LATEST" python3 - <<'PY' || echo "(não foi possível listar as novidades)"
+import json, os, urllib.request
+
+repo, old, new = os.environ["REPO"], os.environ["OLD"], os.environ["NEW"]
+
+def get(path):
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/{path}", headers={"User-Agent": "RadarMarista-update"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r)
+
+if old and old != new:
+    commits = get(f"compare/{old}...{new}").get("commits", [])
+    title = f"Novidades desta atualização ({old[:7]} -> {new[:7]}):"
+else:
+    commits = list(reversed(get(f"commits?sha={new}&per_page=10")))
+    title = "Últimas mudanças desta versão:" if not old else "Versão reinstalada; últimas mudanças:"
+lines = []
+for c in reversed(commits):  # mais recente primeiro
+    msg = c["commit"]["message"].splitlines()[0].strip()
+    if msg.lower().startswith("merge "):
+        continue
+    lines.append(f"  {c['commit']['author']['date'][:10]}  {msg}")
+print(f"\033[1;36m{title}\033[0m")
+print("\n".join(lines[:40]) or "  (nenhuma mudança listada)")
+if len(lines) > 40:
+    print(f"  ... e mais {len(lines) - 40}")
+PY
+fi
+# opções novas no modelo de configuração, que ainda não estão no seu .env
+if [ -f "$ENV_FILE" ]; then
+  NEW_OPTS="$(grep -E '^\s*#?\s*[A-Z0-9_]+\s*=' "$APP_DIR/config/.env.example" | sed -E 's/^\s*#?\s*//' | while IFS= read -r line; do
+      k="${line%%=*}"; grep -qE "^\s*#?\s*$k\s*=" "$ENV_FILE" || echo "  $line"; done)"
+  if [ -n "$NEW_OPTS" ]; then
+    echo
+    echo "Opções novas em config/.env.example (copie para $ENV_FILE se quiser mudar o padrão):"
+    echo "$NEW_OPTS"
+  fi
+fi

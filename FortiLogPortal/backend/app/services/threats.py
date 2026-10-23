@@ -14,9 +14,11 @@ Duas fontes oficiais da API JSON-RPC:
 import hashlib
 import ipaddress
 import json
+import logging
 import re
+import threading
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -28,6 +30,7 @@ from .fortianalyzer import FazError, get_client
 from .logsearch import incremental, run_query
 
 CACHE_TTL = 300
+log = logging.getLogger("portal")
 ROWS_PER_SOURCE = 2000   # eventos lidos por fonte (os mais recentes do período)
 TOP_THREATS = 50         # linhas do FortiView Top Threats
 ALERTS_MAX = 4000        # alertas do Event Monitor lidos no período
@@ -473,6 +476,54 @@ def _read_sources(q: ThreatQuery, limit: int, only: list[str] | None = None,
 
 def _row_id(r: dict) -> str:
     return "|".join(str(r[k]) for k in ("data_hora", "fonte", "ameaca", "ip_origem", "ip_destino", "firewall"))
+
+
+# ---- atualização automática ------------------------------------------------------------------------
+def warm(hours: int | None = None) -> dict:
+    """Refaz a consulta padrão da tela (ADOM padrão, todos os firewalls, últimas N horas) e guarda os eventos.
+
+    A primeira vez lê o período inteiro; as seguintes só o trecho novo. Quem abrir Ameaças depois encontra os
+    eventos já guardados e a tela só busca no FAZ os minutos que faltam.
+    """
+    end = datetime.now().replace(second=0, microsecond=0)
+    q = ThreatQuery(start=end - timedelta(hours=hours or settings.threats_warm_hours), end=end)
+    _rows, fontes = _read_sources(q, ROWS_PER_SOURCE, keep=True, reuse=True)
+    return {"lidos": sum(f.get("lidos", 0) for f in fontes.values()) - sum(f.get("guardados", 0) for f in fontes.values()),
+            "guardados": sum(f.get("guardados", 0) for f in fontes.values()),
+            "erros": {k: f["erro"] for k, f in fontes.items() if f.get("erro")}}
+
+
+_warm_stop = threading.Event()
+
+
+def start_warmer() -> threading.Thread | None:
+    """Liga a atualização automática (THREATS_WARM_MIN) numa thread de fundo; não roda no modo demonstração."""
+    if settings.threats_warm_min <= 0 or settings.demo or not settings.faz_configured or settings.keep_days <= 0:
+        return None
+    _warm_stop.clear()
+
+    def loop():
+        _warm_stop.wait(30)  # deixa o portal terminar de subir
+        while not _warm_stop.is_set():
+            t0 = datetime.now()
+            try:
+                r = warm()
+                log.info("Ameaças: atualização automática em %ds (%d eventos novos, %d já guardados%s)",
+                         (datetime.now() - t0).seconds, r["lidos"], r["guardados"],
+                         f"; falhas: {', '.join(r['erros'])}" if r["erros"] else "")
+            except Exception as e:  # nunca derruba o portal
+                log.warning("Ameaças: atualização automática falhou: %s", e)
+            _warm_stop.wait(settings.threats_warm_min * 60)
+
+    t = threading.Thread(target=loop, name="ameacas-auto", daemon=True)
+    t.start()
+    log.info("Ameaças: atualização automática a cada %d min (últimas %d h, ADOM %s, todos os firewalls)",
+             settings.threats_warm_min, settings.threats_warm_hours, settings.faz_default_adom)
+    return t
+
+
+def stop_warmer() -> None:
+    _warm_stop.set()
 
 
 # ---- mapa em tempo real ----------------------------------------------------------------------------

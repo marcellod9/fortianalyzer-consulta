@@ -166,6 +166,34 @@ if (Test-Path "config\.env") {
     }
 }
 
+# 8. O que mudou desde a versão que estava instalada
+if ($latest) {
+    try {
+        $hdr = @{ "User-Agent" = "RadarMarista-update" }
+        if ($installed -and $installed -ne $latest) {
+            $cmp = Invoke-RestMethod -UseBasicParsing -Headers $hdr "https://api.github.com/repos/$Repo/compare/$installed...$latest"
+            $list = @($cmp.commits)
+            [array]::Reverse($list)
+            $title = "Novidades desta atualização ({0} -> {1}):" -f $installed.Substring(0, 7), $latest.Substring(0, 7)
+        } else {
+            $list = @(Invoke-RestMethod -UseBasicParsing -Headers $hdr "https://api.github.com/repos/$Repo/commits?sha=$latest&per_page=10")
+            $title = "Últimas mudanças desta versão:"
+        }
+        Write-Host ""
+        Write-Host $title -ForegroundColor Cyan
+        $shown = 0
+        foreach ($c in $list) {
+            $msg = ($c.commit.message -split "`n")[0].Trim()
+            if ($msg -like "Merge *") { continue }
+            if ($shown -ge 40) { Write-Host "  ..."; break }
+            Write-Host ("  {0}  {1}" -f $c.commit.author.date.ToString().Substring(0, 10), $msg)
+            $shown++
+        }
+    } catch {
+        Write-Host "(não foi possível listar as novidades: $($_.Exception.Message))" -ForegroundColor Yellow
+    }
+}
+
 Write-Host ""
 if ($NoStart) {
     Write-Host "Atualização concluída. Inicie o portal com scripts\start.bat" -ForegroundColor Green

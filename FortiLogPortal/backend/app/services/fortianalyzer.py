@@ -54,6 +54,9 @@ class FazClient:
         self._id_lock = threading.Lock()
         self._http = session or requests.Session()
         self._alias_off: set[str] = set()  # tipos de log em que o nome do FAZ (FAZ_LOGTYPE) foi recusado
+        # várias pessoas (e a atualização automática de Ameaças) usam o mesmo admin REST: as buscas entram
+        # em fila, no máximo FAZ_PARALLEL_SEARCHES ao mesmo tempo (buscas simultâneas falham no FAZ)
+        self._search_slots = threading.BoundedSemaphore(max(1, settings.faz_parallel_searches))
         self._http.headers.update({"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
 
     def close(self) -> None:
@@ -166,7 +169,7 @@ class FazClient:
         rows: list = []
         total = 0
         prev_first = None
-        with timed(self.source, f"logsearch {logtype} [{filter_expr}]"):
+        with self._search_slots, timed(self.source, f"logsearch {logtype} [{filter_expr}]"):
             while len(rows) < limit:
                 size = min(PAGE_MAX, limit - len(rows))
                 data, page_total = self._search_page(adom, logtype, start, end, filter_expr, devices, len(rows), size)
