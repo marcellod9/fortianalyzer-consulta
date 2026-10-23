@@ -16,6 +16,7 @@ from ..config import settings
 
 log = logging.getLogger("portal")
 _stop = threading.Event()
+PAUSE_BETWEEN_TABS = 20  # segundos
 
 NAMES = {"ameacas": "Ameaças", "dashboard": "Dashboard", "relatorios": "Relatórios", "logs": "Logs",
          "trend": "Trend inativo (inventário do Vision One)"}
@@ -77,8 +78,10 @@ def run_once(cycle: int = 0, background: bool = False) -> dict:
         except Exception as e:  # nunca derruba o portal
             out[tab] = f"falhou: {e}"
             log.warning("Atualização automática: %s falhou: %s", NAMES[tab], e)
-        if background and _stop.is_set():  # o portal está parando
-            break
+        if background:
+            # pausa entre as abas: as buscas de quem está usando o portal passam na frente
+            if _stop.wait(PAUSE_BETWEEN_TABS):
+                break
     return out
 
 

@@ -227,7 +227,8 @@ class FazClient:
         limit = min(limit, self._fortiview_max.get(view, limit))
         while True:
             try:
-                return self._fortiview(adom, view, start, end, devices, limit, sort_by)
+                with self._search_slots:  # o FortiView também é uma tarefa de busca no FAZ: entra na mesma fila
+                    return self._fortiview(adom, view, start, end, devices, limit, sort_by)
             except FazError as e:
                 smaller = [n for n in self.FORTIVIEW_LIMITS if n < limit]
                 if "invalid value for limit" not in str(e).lower() or not smaller:
@@ -277,7 +278,7 @@ class FazClient:
                     raise
                 log.info("FAZ: busca %s falhou com erro interno, tentando de novo (%d/%d)", logtype, attempt + 1,
                          self.SEARCH_RETRIES)
-                time.sleep(2 * (attempt + 1))
+                time.sleep(5 if attempt == 0 else 15)  # dá tempo de o FAZ terminar o que estava fazendo
         raise AssertionError("inalcançável")
 
     def _search_page_once(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
