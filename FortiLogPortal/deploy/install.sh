@@ -162,6 +162,7 @@ else
   else
     # mantém o certificado e o nome configurados; só acompanha a porta do PORTAL_PORT
     sed -i -E "s|proxy_pass http://127\.0\.0\.1:[0-9]+;|proxy_pass http://127.0.0.1:$PORT;|" "$SITE"
+    sed -i -E "s|^(\s*proxy_read_timeout)\s+300s;.*|\1 900s;   # Ameaças lê 7 fontes do FAZ, uma por vez|" "$SITE"
     # RADAR_SERVER_NAME informado de novo: troca o nome (ex.: o domínio do portal mudou)
     if [ -n "$RADAR_SERVER_NAME" ]; then
       sed -i -E "s|^(\s*server_name)\s+[^;]*;|\1 $RADAR_SERVER_NAME;|" "$SITE"
