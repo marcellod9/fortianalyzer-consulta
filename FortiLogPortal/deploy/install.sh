@@ -20,7 +20,7 @@ APP_DIR=/opt/radar-marista
 APP_USER=radar
 SERVICE=radar-marista
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DATA_DIRS=(database logs exports cache)
+DATA_DIRS=(database logs exports cache pedidos)
 
 say() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m!! %s\033[0m\n' "$*"; }
@@ -102,7 +102,7 @@ mkdir -p "$APP_DIR"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then
   # --delete apaga só o que saiu do código; os itens excluídos abaixo (seus dados) nunca são tocados
   rsync -a --delete \
-    --exclude '/config/.env' --exclude '/database/' --exclude '/logs/' --exclude '/exports/' --exclude '/cache/' \
+    --exclude '/config/.env' --exclude '/database/' --exclude '/logs/' --exclude '/exports/' --exclude '/cache/' --exclude '/pedidos/' \
     --exclude '/.venv/' --exclude '/.versao-instalada' --exclude '.git/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
     "$SRC_DIR"/ "$APP_DIR"/
 fi
@@ -157,8 +157,16 @@ echo "Fuso horário do portal: $TZ_PORTAL (o do sistema não muda: $(date +%Z))"
 sed -e "s/--port 8000/--port $PORT/" -e "s|^Environment=TZ=.*|Environment=TZ=$TZ_PORTAL|" \
   "$APP_DIR/deploy/radar-marista.service" > "/etc/systemd/system/$SERVICE.service"
 chmod 644 "/etc/systemd/system/$SERVICE.service"
+# botões "Atualizar" e "Reiniciar" da tela de Configuração: o portal cria um pedido em pedidos/ e esta
+# unidade (root) executa deploy/acao_admin.sh; o portal continua sem sudo nem root
+install -d -m 2750 -o root -g "$APP_USER" /var/log/radar-marista   # saída dos botões (o portal só lê)
+install -m 644 "$APP_DIR/deploy/$SERVICE-acao.service" "/etc/systemd/system/$SERVICE-acao.service"
+install -m 644 "$APP_DIR/deploy/$SERVICE-acao.path" "/etc/systemd/system/$SERVICE-acao.path"
+chmod 755 "$APP_DIR/deploy/acao_admin.sh" "$APP_DIR/deploy/update.sh"
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
+systemctl enable "$SERVICE-acao.path" >/dev/null
+systemctl start "$SERVICE-acao.path" || true
 systemctl restart "$SERVICE"
 
 say "7/7 nginx (HTTPS)"

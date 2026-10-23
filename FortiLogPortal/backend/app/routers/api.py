@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__, database
 from ..config import settings
-from ..services import auth, dashboard, fortigate, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
+from ..services import auth, server_actions, dashboard, fortigate, diagnosis, explain, export, machine, report_export, reports, reputation, threats, trend_coverage
 from ..services.faz_filters import LOGTYPES, SAFE_NAME, LogQuery
 from ..services.fortianalyzer import FazError
 from ..services.fortianalyzer import get_client as faz
@@ -56,6 +56,25 @@ def app_log(limit: int = Query(200, le=1000), level: str | None = None):
 @router.delete("/cache", dependencies=ADMIN)
 def clear_cache():
     return {"removidos": database.cache_purge(all_entries=True)}
+
+
+# ---- servidor: atualizar e reiniciar ---------------------------------------------
+@router.get("/servidor", dependencies=ADMIN)
+def server_status():
+    return server_actions.status()
+
+
+@router.post("/servidor/{acao}", dependencies=ADMIN)
+def server_action(acao: str, request: Request):
+    if acao not in server_actions.ACTIONS:
+        raise HTTPException(404, "Ação desconhecida.")
+    by = who(request)
+    try:
+        server_actions.request(acao, by)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    auth.audit.info("servidor usuario=%s acao=%s", by, acao)
+    return {"ok": True, "acao": acao}
 
 
 # ---- FortiAnalyzer ---------------------------------------------------------------

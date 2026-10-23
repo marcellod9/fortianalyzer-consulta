@@ -1,0 +1,7 @@
+[Unit]
+Description=Radar Marista: executa o pedido de atualizar/reiniciar
+
+[Service]
+Type=oneshot
+ExecStart=/opt/radar-marista/deploy/acao_admin.sh
+TimeoutStartSec=1800

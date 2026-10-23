@@ -154,3 +154,16 @@ Internal Error.". Por isso o serviço roda com `TZ=America/Sao_Paulo`, sem
 mudar o fuso da VM (que pode ter outros sistemas). Para outro fuso, ponha
 `PORTAL_TZ=...` no `config/.env` (ou rode `sudo RADAR_TZ=... deploy/install.sh`).
 O fuso em uso aparece na linha "Radar Marista ... iniciado" do log.
+
+## Atualizar e reiniciar pela tela
+
+Em **Configuração > Servidor**, os administradores do portal têm os botões **Atualizar o portal**
+(roda `deploy/update.sh`) e **Reiniciar o portal** (`systemctl restart radar-marista`).
+
+O portal continua sem root e sem sudo. O botão só cria um arquivo em `/opt/radar-marista/pedidos/`;
+a unidade `radar-marista-acao.path` (do root) vê o arquivo e roda `deploy/acao_admin.sh`, que executa a
+ação e grava a saída em `/var/log/radar-marista/` (o portal só lê). Cada clique fica em `logs/auditoria.log`
+com o e-mail de quem pediu.
+
+Conferir: `systemctl status radar-marista-acao.path` (deve estar "active (waiting)") e
+`cat /var/log/radar-marista/acao-admin.log`.

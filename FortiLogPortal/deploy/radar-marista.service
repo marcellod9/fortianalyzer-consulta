@@ -23,7 +23,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
-ReadWritePaths=/opt/radar-marista/database /opt/radar-marista/logs /opt/radar-marista/exports /opt/radar-marista/cache
+ReadWritePaths=/opt/radar-marista/database /opt/radar-marista/logs /opt/radar-marista/exports /opt/radar-marista/cache /opt/radar-marista/pedidos
 UMask=0027
 
 [Install]

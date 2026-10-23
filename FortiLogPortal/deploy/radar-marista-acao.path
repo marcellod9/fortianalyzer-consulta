@@ -1,0 +1,11 @@
+[Unit]
+Description=Radar Marista: pedidos de atualizar/reiniciar feitos pela tela de Configuração
+
+[Path]
+# o portal (usuário radar) só cria o arquivo do pedido; quem executa é o serviço abaixo, como root
+PathExists=/opt/radar-marista/pedidos/atualizar
+PathExists=/opt/radar-marista/pedidos/reiniciar
+Unit=radar-marista-acao.service
+
+[Install]
+WantedBy=multi-user.target
