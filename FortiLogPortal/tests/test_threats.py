@@ -300,3 +300,18 @@ def test_logsearch_retries_the_faz_internal_error(monkeypatch):
     c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
     res = c.search_logs("root", "traffic", "2026-10-01 00:00:00", "2026-10-02 00:00:00", "action=deny", limit=10)
     assert res["logs"] == [{"srcip": "10.0.0.1"}] and len(adds) == 2
+
+
+def test_faz_call_retries_once_when_the_server_closed_the_connection(monkeypatch):
+    import requests
+    import app.services.fortianalyzer as fz
+    monkeypatch.setattr(fz.time, "sleep", lambda s: None)
+    n = []
+
+    def handler(method, url, body, kw):
+        n.append(1)
+        if len(n) == 1:
+            raise requests.exceptions.ConnectionError("('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))")
+        return FakeResp(200, {"result": [{"status": {"code": 0}, "data": {"Hostname": "faz"}}]})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    assert c.call("get", "/sys/status") == {"Hostname": "faz"} and len(n) == 2

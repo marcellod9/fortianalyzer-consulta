@@ -73,7 +73,16 @@ class FazClient:
     def call(self, method: str, url: str, **params) -> Any:
         body = {"id": self._next_id(), "jsonrpc": "2.0", "method": method, "params": [{"url": url, **params}]}
         try:
-            resp = self._http.post(f"{self.url}/jsonrpc", json=body, verify=self.verify, timeout=self.timeout)
+            try:
+                resp = self._http.post(f"{self.url}/jsonrpc", json=body, verify=self.verify, timeout=self.timeout)
+            except requests.exceptions.ConnectionError as e:
+                # "Remote end closed connection without response": o FAZ fechou a conexão reaproveitada (keep-alive)
+                # enquanto ela estava parada. Tenta uma vez numa conexão nova; timeout de conexão não entra aqui.
+                if isinstance(e, (requests.exceptions.SSLError, requests.exceptions.ConnectTimeout)):
+                    raise
+                log.info("FAZ: conexão fechada pelo servidor (%s), tentando de novo", type(e).__name__)
+                time.sleep(1)
+                resp = self._http.post(f"{self.url}/jsonrpc", json=body, verify=self.verify, timeout=self.timeout)
         except requests.exceptions.SSLError as e:
             raise FazError("Falha de certificado TLS ao conectar no FortiAnalyzer. Ajuste FAZ_VERIFY_TLS "
                            "para o caminho da CA interna.") from e
