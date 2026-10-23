@@ -30,6 +30,17 @@
     </div>
     <div class="col-auto ms-auto" id="downloads"></div>
   </div>
+  <div class="row g-2 mt-1">
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Máquina</label>
+      <input class="form-control form-control-sm" name="maquina" maxlength="128" placeholder="IP, rede (10.1.2.0/24) ou nome"
+        title="IP da máquina interna (o mais preciso), rede ou nome (só onde o FortiGate identifica o dispositivo)"></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Usuário</label>
+      <input class="form-control form-control-sm" name="usuario" maxlength="128" placeholder="Login (contém)"></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small">Destino</label>
+      <input class="form-control form-control-sm" name="destino" maxlength="128" placeholder="IP, site ou domínio (contém)"
+        title="Lado externo da ameaça: o site, domínio ou IP para onde a máquina foi, ou de onde veio o ataque"></div>
+    <div class="col-auto d-flex align-items-end"><button type="button" class="btn btn-link btn-sm" id="clearFilters">Limpar filtros</button></div>
+  </div>
   <div class="row g-2 mt-1 d-none" id="custom">
     <div class="col-6 col-md-3"><label class="form-label small">Data inicial</label><input type="datetime-local" class="form-control form-control-sm" name="start" id="start" required></div>
     <div class="col-6 col-md-3"><label class="form-label small">Data final</label><input type="datetime-local" class="form-control form-control-sm" name="end" id="end" required></div>

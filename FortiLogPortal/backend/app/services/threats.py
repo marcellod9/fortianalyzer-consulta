@@ -20,11 +20,11 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .. import database
 from ..config import settings
-from .faz_filters import SAFE_NAME, LogQuery
+from .faz_filters import SAFE_NAME, LogFilter, LogQuery, _ip_or_net, _text
 from .fortianalyzer import FazError, get_client
 from .logsearch import incremental, run_query
 
@@ -64,6 +64,15 @@ class ThreatQuery(BaseModel):
     start: datetime
     end: datetime
     top: int = Field(default=TOP, ge=3, le=30)
+    # filtros da Visão geral: máquina (IP, rede ou nome), usuário e destino (IP, rede, site ou domínio)
+    maquina: str | None = None
+    usuario: str | None = None
+    destino: str | None = None
+
+    @field_validator("maquina", "usuario", "destino", mode="before")
+    @classmethod
+    def _filter_text(cls, v):
+        return _text(v)
 
     @model_validator(mode="after")
     def _check(self):
@@ -72,13 +81,43 @@ class ThreatQuery(BaseModel):
         self.log_query("ips")  # valida período, firewall e nome do equipamento
         return self
 
-    def log_query(self, logtype: str, category: str | None = None) -> LogQuery:
-        # categoria do site (catdesc); a de aplicação (appcat) entra no filtro em run()
+    @property
+    def filtered(self) -> bool:
+        return bool(self.maquina or self.usuario or self.destino)
+
+    def log_query(self, logtype: str, category: str | None = None, inbound: bool = False) -> LogQuery:
+        """Busca de uma fonte com os filtros da tela.
+
+        inbound: ataque vindo de fora (IPS de entrada), em que a máquina interna é o destino do log e o
+        lado externo é a origem; a tela chama de "destino" sempre o lado externo.
+        """
+        machine_ip, dest_ip = _as_ip(self.maquina), _as_ip(self.destino)
+        mine, other = ("dstip", "srcip") if inbound else ("srcip", "dstip")
+        net = {mine: machine_ip, other: dest_ip}
+        filters = []
+        if self.maquina and not machine_ip:  # nome da máquina (identificação de dispositivos do FortiGate)
+            filters.append(LogFilter(field="srcname", op="~", value=self.maquina))
         return LogQuery(adom=self.adom, devices=self.devices, devname=self.devname, start=self.start, end=self.end,
-                        logtype=logtype, category=category if logtype != "app-ctrl" else None)
+                        logtype=logtype, category=category if logtype != "app-ctrl" else None,
+                        user=self.usuario, hostname=self.destino if self.destino and not dest_ip else None,
+                        filters=filters, **net)
+
+    def inbound_read(self, source: str) -> bool:
+        """No IPS a máquina pode ser o destino do log (ataque de fora): filtrando por IP, lê os dois lados."""
+        return source == "ips" and (bool(_as_ip(self.maquina)) or (bool(_as_ip(self.destino)) and not self.maquina))
 
     def faz_time(self, which: str) -> str:
         return getattr(self, which).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _as_ip(v: str | None) -> str | None:
+    """IP ou rede (como o FortiAnalyzer espera); None se o texto for um nome."""
+    if not v:
+        return None
+    try:
+        return _ip_or_net(v)
+    except ValueError:
+        return None
 
 
 # ---- ranking pelos logs ----------------------------------------------------------------------------
@@ -351,6 +390,8 @@ def compromised_hosts(q: ThreatQuery) -> dict:
     hosts: dict[str, dict] = {}
     for a in found:
         f = _alert_fields(a)
+        if not _alert_matches(q, a, f):
+            continue
         key = str(a.get("epip") or a.get("epname") or a.get("epid") or "?")
         h = hosts.setdefault(key, {"ip": a.get("epip") or "", "maquina": a.get("epname") or "", "usuarios": set(),
                                    "ameacas": Counter(), "dominios": set(), "alertas": 0, "pior": "", "ultimo": "",
@@ -382,7 +423,38 @@ def compromised_hosts(q: ThreatQuery) -> dict:
     # não reconhecidas (sem ACK) primeiro, depois a pior severidade e o alerta mais recente
     out.sort(key=lambda h: h["ultimo"], reverse=True)
     out.sort(key=lambda h: (h["reconhecido"], SEVERITY_ORDER.get(h["pior"], 5)))
-    return {"maquinas": out, "alertas": len(found), "alertas_lidos": lidos, "mais": alerts["mais"]}
+    return {"maquinas": out, "alertas": sum(h["alertas"] for h in out), "alertas_lidos": lidos, "mais": alerts["mais"]}
+
+
+def _contains(needle: str | None, *values) -> bool:
+    n = (needle or "").lower()
+    return any(n in str(v or "").lower() for v in values)
+
+
+def _in_net(ip, net: str) -> bool:
+    try:
+        return ipaddress.ip_address(str(ip).strip()) in ipaddress.ip_network(net, strict=False)
+    except ValueError:
+        return False
+
+
+def _alert_matches(q: ThreatQuery, a: dict, f: dict) -> bool:
+    """Filtros da tela aplicados aos alertas do Event Monitor (a API de alertas não filtra por campo)."""
+    if q.maquina:
+        ip = _as_ip(q.maquina)
+        if not (_in_net(a.get("epip"), ip) if ip else _contains(q.maquina, a.get("epname"))):
+            return False
+    if q.usuario and not _contains(q.usuario, f["usuario"]):
+        return False
+    if q.destino:
+        ip = _as_ip(q.destino)
+        targets = [t.get("value") for t in a.get("target") or [] if isinstance(t, dict)]
+        if ip:
+            if not any(_in_net(v, ip) for v in targets + [a.get("dstip")]):
+                return False
+        elif not _contains(q.destino, f["dominio"], *targets):
+            return False
+    return True
 
 
 # ---- consulta completa ------------------------------------------------------------------------------
@@ -406,7 +478,8 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
                    "deixe Event Management como Read-Only.")
         comprometidas = {"maquinas": [], "alertas": 0, "erro": msg}
     try:
-        top = top_threats(q)
+        # o FortiView Top Threats é a visão geral do FAZ: com filtro de máquina/usuário/destino ele não é lido
+        top = {"linhas": [], "filtrado": True} if q.filtered else top_threats(q)
     except FazError as e:
         msg = str(e)
         if "sem permissão" in msg:
@@ -418,6 +491,7 @@ def run(q: ThreatQuery, use_cache: bool = True) -> dict:
     bloqueados = sum(r["bloqueado"] for r in rows)
     out = {
         "periodo": {"inicio": q.start.strftime("%Y-%m-%d %H:%M"), "fim": q.end.strftime("%Y-%m-%d %H:%M")},
+        "filtros": {k: v for k, v in (("maquina", q.maquina), ("usuario", q.usuario), ("destino", q.destino)) if v},
         "fontes": fontes, "erros": erros, "amostra": any(f.get("mais") for f in fontes.values()),
         "limite_amostra": ROWS_PER_SOURCE,
         "reaproveitados": sum(f.get("guardados", 0) for f in fontes.values()),
@@ -451,24 +525,34 @@ def _read_sources(q: ThreatQuery, limit: int, only: list[str] | None = None,
     for sid, (nome, lt, cat, _sev) in SOURCES.items():
         if only and sid not in only:
             continue
-        lq = q.log_query(lt, cat)
-        lq.limit = limit
         extra = EXTRA_FILTER.get(sid)
-        expr = " and ".join(p for p in (lq.filter_expr(), extra) if p)
-        fontes[sid] = {"nome": nome, "filtro": expr, "total": 0, "lidos": 0}
+        reads = [q.log_query(lt, cat)] + ([q.log_query(lt, cat, inbound=True)] if q.inbound_read(sid) else [])
+        exprs = [" and ".join(p for p in (lq.filter_expr(), extra) if p) for lq in reads]
+        fontes[sid] = {"nome": nome, "filtro": " | ".join(exprs), "total": 0, "lidos": 0}
 
         def fetch(part: LogQuery, extra=extra) -> dict:
             if extra:
                 return _search(part, " and ".join(p for p in (part.filter_expr(), extra) if p))
             return run_query(part, use_cache=False, save_cache=False, policy_names=False)
-        try:
-            res = incremental(lq, fetch, tag="ameaca:" + (extra or ""), reuse=reuse) if keep else fetch(lq)
-        except FazError as e:
-            fontes[sid]["erro"] = str(e)
-            continue
-        fontes[sid].update(total=max(res["total"], res["returned"]), lidos=res["returned"], mais=res["mais"],
-                           guardados=res.get("guardados", 0))
-        rows.extend(threat_row(r, sid) for r in res["rows"])
+        seen: set[str] = set()
+        for lq in reads:
+            lq.limit = limit
+            try:
+                res = incremental(lq, fetch, tag="ameaca:" + (extra or ""), reuse=reuse) if keep else fetch(lq)
+            except FazError as e:
+                fontes[sid]["erro"] = str(e)
+                break
+            f = fontes[sid]
+            f.update(total=f["total"] + max(res["total"], res["returned"]), lidos=f["lidos"] + res["returned"],
+                     mais=f.get("mais", False) or res["mais"], guardados=f.get("guardados", 0) + res.get("guardados", 0))
+            for r in res["rows"]:
+                t = threat_row(r, sid)
+                if len(reads) > 1:  # o mesmo evento pode vir nas duas leituras
+                    rid = _row_id(t)
+                    if rid in seen:
+                        continue
+                    seen.add(rid)
+                rows.append(t)
     rows.sort(key=lambda r: r["data_hora"], reverse=True)
     return rows, fontes
 

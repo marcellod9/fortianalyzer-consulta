@@ -53,6 +53,8 @@ FLP.threats = (() => {
 
   // ---- Top Threats (FortiView) ------------------------------------------------------------
   function topThreatsHtml(t) {
+    if (t.filtrado) return `<div class="alert alert-light border small"><i class="bi bi-bar-chart-steps"></i> <b>Top Threats (FortiView):</b>
+      é a visão geral do FortiAnalyzer e não usa os filtros de máquina, usuário e destino. Limpe os filtros para vê-lo.</div>`;
     if (t.erro) return `<div class="alert alert-warning small"><i class="bi bi-bar-chart-steps"></i> <b>Top Threats (FortiView):</b> ${esc(t.erro)}</div>`;
     const max = Math.max(1, ...t.linhas.map((x) => x.pontuacao));
     const rows = t.linhas.map((x, i) => `<tr><td class="text-body-secondary">${i + 1}</td><td class="text-break">${esc(x.ameaca)}
@@ -198,7 +200,10 @@ FLP.threats = (() => {
     const fontes = Object.values(d.fontes).map((f) => f.erro ? `${esc(f.nome)}: não consultado`
       : `${esc(f.nome)}: ${f.mais ? "≥ " : ""}${num(f.total)}`).join(" · ");
     const erros = Object.values(d.fontes).filter((f) => f.erro);
+    const NOMES = { maquina: "Máquina", usuario: "Usuário", destino: "Destino" };
+    const filtros = Object.entries(d.filtros || {}).map(([k, v]) => `<span class="badge text-bg-primary me-1">${NOMES[k]}: ${esc(v)}</span>`).join("");
     box.innerHTML = `
+      ${filtros ? `<div class="mb-2"><i class="bi bi-funnel"></i> ${filtros}</div>` : ""}
       <div class="small text-body-secondary mb-2"><i class="bi bi-calendar3"></i> ${esc(d.periodo.inicio)} a ${esc(d.periodo.fim)}
         · gerado em ${esc(d.gerado_em.slice(0, 16))}${d.cache ? " (cache)" : ""}
 ${FLP.keptNote(d.reaproveitados)}<br><i class="bi bi-database"></i> ${fontes}</div>
@@ -239,6 +244,10 @@ ${FLP.keptNote(d.reaproveitados)}<br><i class="bi bi-database"></i> ${fontes}</d
                                         label: document.getElementById("lastNLabel") });
     FLP.loadAdomsAndDevices(document.getElementById("adom"), document.getElementById("devices"), defaultAdom);
     const fresh = FLP.keptRefresh(document.getElementById("result"), form);
+    document.getElementById("clearFilters").addEventListener("click", () => {
+      ["maquina", "usuario", "destino"].forEach((n) => { form.elements[n].value = ""; });
+      form.requestSubmit();
+    });
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       period.refresh();

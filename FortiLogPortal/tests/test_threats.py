@@ -315,3 +315,54 @@ def test_faz_call_retries_once_when_the_server_closed_the_connection(monkeypatch
         return FakeResp(200, {"result": [{"status": {"code": 0}, "data": {"Hostname": "faz"}}]})
     c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
     assert c.call("get", "/sys/status") == {"Hostname": "faz"} and len(n) == 2
+
+
+def test_overview_filters_go_to_the_faz_search():
+    end = datetime(2026, 10, 20, 12, 0)
+    q = threats.ThreatQuery(start=end - timedelta(days=1), end=end, maquina="10.1.2.3", usuario="maria", destino="evil.com")
+    assert q.log_query("webfilter", "Malicious").filter_expr() == \
+        'srcip=10.1.2.3 and user~"maria" and hostname~"evil.com" and catdesc~"Malicious"'
+    assert 'qname~"evil.com"' in q.log_query("dns").filter_expr()
+    # IPS de entrada: a máquina interna é o destino do log, o lado externo é a origem
+    q = threats.ThreatQuery(start=end - timedelta(days=1), end=end, maquina="10.1.2.3", destino="200.1.1.1")
+    assert q.log_query("ips", inbound=True).filter_expr() == "srcip=200.1.1.1 and dstip=10.1.2.3"
+    assert q.inbound_read("ips") and not q.inbound_read("virus")
+    q = threats.ThreatQuery(start=end - timedelta(days=1), end=end, maquina="NB-0042")
+    assert q.log_query("traffic").filter_expr() == 'srcname~"NB-0042"' and not q.inbound_read("ips")
+    with pytest.raises(ValueError):
+        threats.ThreatQuery(start=end - timedelta(days=1), end=end, usuario='x" or 1=1')
+
+
+def test_filtered_ips_reads_both_sides_without_duplicates(monkeypatch):
+    seen = []
+
+    def fake(lq, *a, **k):
+        seen.append(lq.filter_expr())
+        row = {"data_hora": "2026-10-20 11:00:00", "bloqueado": True, "acao_original": "dropped", "usuario": "",
+               "ip_origem": "200.1.1.1", "ip_destino": "10.1.2.3", "maquina": "", "destino": "10.1.2.3:443",
+               "firewall": "FW", "log_original": {"attack": "A", "direction": "incoming"}}
+        return {"total": 1, "returned": 1, "rows": [row], "mais": False}
+    monkeypatch.setattr(threats, "run_query", fake)
+    end = datetime(2026, 10, 20, 12, 0)
+    q = threats.ThreatQuery(start=end - timedelta(days=1), end=end, maquina="10.1.2.3")
+    rows, fontes = threats._read_sources(q, 100, only=["ips"])
+    assert seen == ["srcip=10.1.2.3", "dstip=10.1.2.3"]
+    assert len(rows) == 1 and rows[0]["afetado_ip"] == "10.1.2.3" and fontes["ips"]["lidos"] == 2
+
+
+def test_overview_filters_apply_to_the_event_monitor_alerts():
+    end = datetime(2026, 10, 20, 12, 0)
+    a = {"epip": "10.1.2.3", "epname": "NB-0042", "groupby1": "user:maria", "target": [{"name": "domain", "value": "evil.com"}]}
+    f = threats._alert_fields(a)
+    ok = lambda **kw: threats._alert_matches(threats.ThreatQuery(start=end - timedelta(days=1), end=end, **kw), a, f)
+    assert ok(maquina="10.1.2.0/24") and ok(maquina="nb-00") and ok(usuario="MAR") and ok(destino="evil")
+    assert not ok(maquina="10.9.9.9") and not ok(usuario="joao") and not ok(destino="1.1.1.1")
+
+
+def test_api_threats_with_filters_skips_top_threats():
+    with TestClient(app) as c:
+        body = {"start": (NOW - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M"), "end": NOW.strftime("%Y-%m-%dT%H:%M"),
+                "usuario": "maria"}
+        d = c.post("/api/threats", json=body).json()
+        assert d["filtros"] == {"usuario": "maria"} and d["top_threats"].get("filtrado")
+        assert 'user~"maria"' in d["fontes"]["virus"]["filtro"]
