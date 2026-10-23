@@ -1,5 +1,7 @@
 # Instalação (Windows)
 
+Para instalar num servidor Ubuntu 24.04 (em `/opt`, com HTTPS e serviço), veja [INSTALACAO_UBUNTU.md](INSTALACAO_UBUNTU.md).
+
 ## Pré-requisitos
 
 | Item | Observação |

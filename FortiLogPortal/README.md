@@ -77,6 +77,7 @@ FortiLogPortal
 ## Documentação
 
 - [Instalação](docs/INSTALACAO.md)
+- [Instalação em servidor Ubuntu 24.04 (/opt, HTTPS, serviço)](docs/INSTALACAO_UBUNTU.md)
 - [Configuração das APIs (FortiAnalyzer e Vision One)](docs/CONFIGURACAO_APIS.md)
 - [Login Microsoft Entra ID com MFA e permissão de relatórios](docs/CONFIGURACAO_ENTRA.md)
 - [Execução local e uso](docs/EXECUCAO_LOCAL.md)
