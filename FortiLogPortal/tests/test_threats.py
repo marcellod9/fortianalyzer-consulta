@@ -280,3 +280,23 @@ def test_automatic_refresh_prepares_the_default_threats_query(monkeypatch):
 def test_automatic_refresh_is_off_in_demo():
     from app.services import warmup
     assert warmup.start() is None  # testes rodam com PORTAL_DEMO=true
+
+
+def test_logsearch_retries_the_faz_internal_error(monkeypatch):
+    import app.services.fortianalyzer as fz
+    monkeypatch.setattr(fz.time, "sleep", lambda s: None)
+    adds = []
+
+    def handler(method, url, body, kw):
+        m, p = body["method"], body["params"][0]
+        if m == "add":
+            adds.append(1)
+            return FakeResp(200, {"result": {"tid": len(adds)}})
+        if m == "delete":
+            return FakeResp(200, {"result": {}})
+        if len(adds) < 2:
+            return FakeResp(200, {"error": {"code": -32603, "message": "Internal error: get log search error. Internal Error."}})
+        return FakeResp(200, {"result": {"percentage": 100, "total-count": 1, "data": [{"srcip": "10.0.0.1"}]}})
+    c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
+    res = c.search_logs("root", "traffic", "2026-10-01 00:00:00", "2026-10-02 00:00:00", "action=deny", limit=10)
+    assert res["logs"] == [{"srcip": "10.0.0.1"}] and len(adds) == 2

@@ -16,6 +16,7 @@ URLs usadas:
   get    /fortiview/adom/{adom}/{view}/run/{tid}   lê o resultado até percentage = 100
 """
 import itertools
+import logging
 import threading
 import time
 from typing import Any
@@ -24,6 +25,8 @@ import requests
 
 from ..config import settings
 from .telemetry import timed
+
+log = logging.getLogger("portal")
 
 
 class FazError(Exception):
@@ -261,8 +264,24 @@ class FazClient:
                     raise FazError(f"FortiView {view}: tempo limite excedido; reduza o período.")
                 time.sleep(1)
 
+    SEARCH_RETRIES = 2   # "get log search error. Internal Error." (-32603): erro passageiro do FAZ; refaz a busca
+
     def _search_page(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
                      devices: list[str] | None, offset: int, limit: int) -> tuple[list, int | None]:
+        for attempt in range(self.SEARCH_RETRIES + 1):
+            try:
+                return self._search_page_once(adom, logtype, start, end, filter_expr, devices, offset, limit)
+            except FazError as e:
+                msg = str(e).lower()
+                if attempt >= self.SEARCH_RETRIES or "log search error" not in msg and "internal error" not in msg:
+                    raise
+                log.info("FAZ: busca %s falhou com erro interno, tentando de novo (%d/%d)", logtype, attempt + 1,
+                         self.SEARCH_RETRIES)
+                time.sleep(2 * (attempt + 1))
+        raise AssertionError("inalcançável")
+
+    def _search_page_once(self, adom: str, logtype: str, start: str, end: str, filter_expr: str,
+                          devices: list[str] | None, offset: int, limit: int) -> tuple[list, int | None]:
         base = f"/logview/adom/{adom}/logsearch"
         device = [{"devid": d} for d in devices] if devices else [{"devid": "All_FortiGate"}]
         created = self.call(
