@@ -162,7 +162,11 @@ else
   else
     # mantém o certificado e o nome configurados; só acompanha a porta do PORTAL_PORT
     sed -i -E "s|proxy_pass http://127\.0\.0\.1:[0-9]+;|proxy_pass http://127.0.0.1:$PORT;|" "$SITE"
-    echo "Mantido $SITE (certificado e nome configurados por você não são trocados)."
+    # RADAR_SERVER_NAME informado de novo: troca o nome (ex.: o domínio do portal mudou)
+    if [ -n "$RADAR_SERVER_NAME" ]; then
+      sed -i -E "s|^(\s*server_name)\s+[^;]*;|\1 $RADAR_SERVER_NAME;|" "$SITE"
+    fi
+    echo "Mantido $SITE (o certificado configurado por você não é trocado)."
   fi
   ln -sf "$SITE" "/etc/nginx/sites-enabled/$SERVICE"
   # o site padrão do Ubuntu só sai quando não há outros sistemas no nginx
