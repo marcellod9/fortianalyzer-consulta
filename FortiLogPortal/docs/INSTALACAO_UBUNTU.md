@@ -38,6 +38,26 @@ sudo bash fortianalyzer-consulta-*/FortiLogPortal/deploy/install.sh
 O script instala Python, nginx e dependências, cria o usuário `radar`, copia o código para `/opt/radar-marista`,
 cria o `.venv`, o serviço e o site do nginx (com um certificado de teste) e confere se o portal responde.
 
+### Servidor que já tem outros sistemas
+
+Antes de mexer em qualquer coisa, o instalador confere as portas e para com uma explicação se houver conflito:
+
+- **Porta interna do portal** (padrão `8000`, só em `127.0.0.1`): um sistema na `8001` não atrapalha. Se a `8000`
+  estiver ocupada, defina outra em `/opt/radar-marista/config/.env`, ex. `PORTAL_PORT=8010`, e rode o instalador de
+  novo (ele ajusta o serviço e o nginx para a porta nova). Sempre que mudar `PORTAL_PORT`, rode o `install.sh` (ou o
+  `update.sh --force`), não só o restart.
+- **nginx já publicando outro sistema**: informe o nome DNS do portal para os sites não se misturarem. O site padrão
+  do nginx e os outros sites não são tocados:
+
+  ```bash
+  sudo RADAR_SERVER_NAME=radar.marista.edu.br bash fortianalyzer-consulta-*/FortiLogPortal/deploy/install.sh
+  ```
+- **Apache ou outro servidor web em 80/443**: `sudo RADAR_NGINX=0 bash .../install.sh` instala só o portal; publique
+  `http://127.0.0.1:8000` por esse servidor repassando `Host`, `X-Forwarded-For` e `X-Forwarded-Proto`
+  (o `deploy/nginx-radar-marista.conf` serve de exemplo).
+
+Para ver quem usa cada porta: `sudo ss -ltnp | grep -E ':(80|443|8000|8001) '`.
+
 ## 2. Configurar o `config/.env`
 
 ```bash

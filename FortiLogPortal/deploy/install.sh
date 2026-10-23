@@ -7,6 +7,12 @@
 # Pode rodar de novo quando quiser: o código é substituído e ficam preservados
 #   config/.env, database/, logs/, exports/ e cache/
 # Para atualizar baixando do GitHub, use: sudo /opt/radar-marista/deploy/update.sh
+#
+# Servidor que já tem outros sistemas:
+#   - porta interna do portal: PORTAL_PORT no config/.env (padrão 8000); o script recusa uma porta já usada
+#   - nginx já publicando outro site: informe o nome do portal, ex.
+#       sudo RADAR_SERVER_NAME=radar.marista.edu.br bash deploy/install.sh
+#   - outro servidor web (Apache etc.) em 80/443: RADAR_NGINX=0 pula o nginx (publique pelo servidor existente)
 set -euo pipefail
 
 APP_DIR=/opt/radar-marista
@@ -24,10 +30,60 @@ if ! grep -q 'VERSION_ID="24.04"' /etc/os-release 2>/dev/null; then
   warn "Este script foi feito para Ubuntu 24.04 LTS; seguindo mesmo assim."
 fi
 
+RADAR_NGINX="${RADAR_NGINX:-1}"
+RADAR_SERVER_NAME="${RADAR_SERVER_NAME:-}"
+env_port() {
+  local f="$APP_DIR/config/.env" v=""
+  [ -f "$f" ] && v="$(sed -n -E 's/^\s*PORTAL_PORT\s*=\s*"?([0-9]+)"?\s*\r?$/\1/p' "$f" | tail -1)"
+  echo "${v:-8000}"
+}
+# quem escuta na porta TCP $1: "nome[pid]" de cada processo, vazio se livre
+port_owners() {
+  ss -ltnpH "sport = :$1" 2>/dev/null | grep -oE '\("[^"]+",pid=[0-9]+' | sed -E 's/\("([^"]+)",pid=([0-9]+)/\1[\2]/' | sort -u | tr '\n' ' ' || true
+}
+ours() {  # o processo é o próprio Radar Marista?
+  local pid
+  for pid in $(echo "$1" | grep -oE '\[[0-9]+\]' | tr -d '[]'); do
+    tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "$APP_DIR/" || return 1
+  done
+  return 0
+}
+
+say "0/7 Conferindo portas"
+PORT="$(env_port)"
+owners="$(port_owners "$PORT")"
+if [ -n "$owners" ] && ! ours "$owners"; then
+  echo "A porta $PORT já está em uso por: $owners"
+  echo "Escolha outra porta livre no config/.env, ex.: PORTAL_PORT=8010 (em $APP_DIR/config/.env), e rode de novo."
+  exit 1
+fi
+echo "Porta interna do portal: 127.0.0.1:$PORT (livre ou já do Radar Marista)."
+if [ "$RADAR_NGINX" = 1 ]; then
+  for p in 80 443; do
+    owners="$(port_owners "$p")"
+    if [ -n "$owners" ] && ! echo "$owners" | grep -qE '^(nginx\[[0-9]+\] ?)+$'; then
+      echo "A porta $p já é usada por outro servidor web: $owners"
+      echo "O portal pode ser publicado por ele (proxy para http://127.0.0.1:$PORT) e o nginx fica de fora:"
+      echo "  sudo RADAR_NGINX=0 bash $0"
+      exit 1
+    fi
+  done
+  OTHER_SITES="$(find /etc/nginx/sites-enabled /etc/nginx/conf.d -maxdepth 1 \( -type f -o -type l \) 2>/dev/null \
+                 | grep -vE "/($SERVICE|default)$" || true)"
+  if [ -n "$OTHER_SITES" ] && [ -z "$RADAR_SERVER_NAME" ] && [ ! -f "/etc/nginx/sites-available/$SERVICE" ]; then
+    echo "O nginx já publica outros sites:"; echo "$OTHER_SITES" | sed 's/^/  /'
+    echo "Para não misturar com eles, informe o nome (DNS) do portal, ex.:"
+    echo "  sudo RADAR_SERVER_NAME=radar.marista.edu.br bash $0"
+    exit 1
+  fi
+fi
+
 say "1/7 Pacotes do sistema"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q python3 python3-venv python3-pip nginx ssl-cert rsync curl unzip ca-certificates
+PKGS=(python3 python3-venv python3-pip rsync curl unzip ca-certificates iproute2)
+[ "$RADAR_NGINX" = 1 ] && PKGS+=(nginx ssl-cert)
+apt-get install -y -q "${PKGS[@]}"
 
 say "2/7 Usuário de serviço ($APP_USER)"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --home-dir "$APP_DIR" --no-create-home --shell /usr/sbin/nologin "$APP_USER"
@@ -77,35 +133,50 @@ fi
 "$APP_DIR/.venv/bin/python" -m compileall -q "$APP_DIR/backend" >/dev/null || true
 
 say "6/7 Serviço systemd ($SERVICE)"
-install -m 644 "$APP_DIR/deploy/radar-marista.service" "/etc/systemd/system/$SERVICE.service"
+sed "s/--port 8000/--port $PORT/" "$APP_DIR/deploy/radar-marista.service" > "/etc/systemd/system/$SERVICE.service"
+chmod 644 "/etc/systemd/system/$SERVICE.service"
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 systemctl restart "$SERVICE"
 
 say "7/7 nginx (HTTPS)"
 SITE=/etc/nginx/sites-available/$SERVICE
-if [ ! -f "$SITE" ]; then
-  install -m 644 "$APP_DIR/deploy/nginx-radar-marista.conf" "$SITE"
+if [ "$RADAR_NGINX" != 1 ]; then
+  echo "nginx não configurado (RADAR_NGINX=0). Publique http://127.0.0.1:$PORT pelo seu servidor web, repassando"
+  echo "os cabeçalhos Host, X-Forwarded-For e X-Forwarded-Proto (exemplo em deploy/nginx-radar-marista.conf)."
 else
-  echo "Mantido $SITE (já existia; o certificado e o nome configurados por você não são trocados)."
-fi
-ln -sf "$SITE" "/etc/nginx/sites-enabled/$SERVICE"
-rm -f /etc/nginx/sites-enabled/default
-nginx -t
-systemctl enable nginx >/dev/null
-systemctl reload nginx || systemctl restart nginx
-if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 'Nginx Full' >/dev/null && echo "Liberado HTTP/HTTPS no ufw."
+  if [ ! -f "$SITE" ]; then
+    sed "s|proxy_pass http://127.0.0.1:8000;|proxy_pass http://127.0.0.1:$PORT;|" "$APP_DIR/deploy/nginx-radar-marista.conf" > "$SITE"
+    if [ -n "$RADAR_SERVER_NAME" ]; then
+      sed -i "s|server_name _;|server_name $RADAR_SERVER_NAME;|" "$SITE"
+    fi
+    chmod 644 "$SITE"
+  else
+    # mantém o certificado e o nome configurados; só acompanha a porta do PORTAL_PORT
+    sed -i -E "s|proxy_pass http://127\.0\.0\.1:[0-9]+;|proxy_pass http://127.0.0.1:$PORT;|" "$SITE"
+    echo "Mantido $SITE (certificado e nome configurados por você não são trocados)."
+  fi
+  ln -sf "$SITE" "/etc/nginx/sites-enabled/$SERVICE"
+  # o site padrão do Ubuntu só sai quando não há outros sistemas no nginx
+  if [ -z "${OTHER_SITES:-}" ] && [ -L /etc/nginx/sites-enabled/default ] && grep -q "root /var/www/html" /etc/nginx/sites-available/default 2>/dev/null; then
+    rm -f /etc/nginx/sites-enabled/default
+  fi
+  nginx -t
+  systemctl enable nginx >/dev/null
+  systemctl reload nginx || systemctl restart nginx
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow 'Nginx Full' >/dev/null && echo "Liberado HTTP/HTTPS no ufw."
+  fi
 fi
 
 say "Verificando o portal"
 ok=0
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then ok=1; break; fi
+  if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok=1; break; fi
   sleep 1
 done
 if [ "$ok" = 1 ]; then
-  echo "Portal respondendo em http://127.0.0.1:8000 (publicado pelo nginx em https://$(hostname -f 2>/dev/null || hostname)/)."
+  echo "Portal respondendo em http://127.0.0.1:$PORT${RADAR_SERVER_NAME:+ (publicado em https://$RADAR_SERVER_NAME/)}."
 else
   warn "O portal não respondeu. Veja: journalctl -u $SERVICE -n 50 --no-pager"
   exit 1
