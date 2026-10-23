@@ -44,7 +44,8 @@ if [ -z "$ZIP" ]; then
     exit 0
   fi
   ZIP="$WORK/radar.zip"
-  curl -fSL -o "$ZIP" "https://codeload.github.com/$REPO/zip/refs/heads/$BRANCH"
+  echo "Baixando ${LATEST:0:7}..."
+  curl -fsSL -o "$ZIP" "https://codeload.github.com/$REPO/zip/refs/heads/$BRANCH"
 fi
 mkdir "$WORK/src"
 unzip -q "$ZIP" -d "$WORK/src"
