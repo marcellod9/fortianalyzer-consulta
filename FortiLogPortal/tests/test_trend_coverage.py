@@ -169,7 +169,7 @@ def test_fortiview_retries_with_a_smaller_limit_and_remembers_it():
         return FakeResp(200, {"result": {"percentage": 100, "data": [{"srcip": "10.0.0.1"}]}})
     c = FazClient("https://faz.local", "tok", session=FakeSession(handler))
     rows = c.fortiview("root", "top-sources", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=3000)
-    assert rows == [{"srcip": "10.0.0.1"}] and limits == [3000, 2000, 1000]
+    assert rows == [{"srcip": "10.0.0.1"}] and limits == [2000, 1000]  # nunca pede acima de 2000
     c.fortiview("root", "top-sources", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=3000)
     assert limits[-1] == 1000  # lembrou o limite aceito
 

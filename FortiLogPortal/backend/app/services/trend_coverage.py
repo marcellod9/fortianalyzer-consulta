@@ -27,7 +27,7 @@ from .visionone import V1Error
 
 log = logging.getLogger("portal.trend")
 
-SOURCES_TOP = 3000        # linhas do FortiView Top Sources
+SOURCES_TOP = 2000        # linhas do FortiView Top Sources (o FAZ 7.4.7 recusa 3000)
 LOG_ROWS = 5000           # logs de tráfego lidos quando não há FortiView
 INVENTORY_TTL = 2700      # inventário do Vision One em cache (45 min; a atualização automática renova a cada 30 min)
 SHOW_MAX = 3000

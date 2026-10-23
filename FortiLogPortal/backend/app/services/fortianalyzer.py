@@ -233,7 +233,8 @@ class FazClient:
         O máximo de linhas aceito varia com a versão e a tela ("invalid value for limit"): nesse caso repete com um
         limite menor e lembra o que funcionou para a próxima vez.
         """
-        limit = min(limit, self._fortiview_max.get(view, limit))
+        # 3000 já foi recusado pelo FAZ 7.4.7: começa no maior limite da lista para não gerar erro a cada reinício
+        limit = min(limit, self.FORTIVIEW_LIMITS[0], self._fortiview_max.get(view, limit))
         while True:
             try:
                 with self._search_slots:  # o FortiView também é uma tarefa de busca no FAZ: entra na mesma fila
