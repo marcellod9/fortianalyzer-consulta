@@ -9,7 +9,8 @@
 # Para atualizar baixando do GitHub, use: sudo /opt/radar-marista/deploy/update.sh
 #
 # Servidor que já tem outros sistemas:
-#   - porta interna do portal: PORTAL_PORT no config/.env (padrão 8000); o script recusa uma porta já usada
+#   - porta interna do portal: PORTAL_PORT no config/.env (padrão 8000); o script recusa uma porta já usada.
+#     Na primeira instalação (ainda sem .env) informe na linha de comando: sudo RADAR_PORT=8010 bash deploy/install.sh
 #   - nginx já publicando outro site: informe o nome do portal, ex.
 #       sudo RADAR_SERVER_NAME=radar.marista.edu.br bash deploy/install.sh
 #   - outro servidor web (Apache etc.) em 80/443: RADAR_NGINX=0 pula o nginx (publique pelo servidor existente)
@@ -50,7 +51,8 @@ ours() {  # o processo é o próprio Radar Marista?
 }
 
 say "0/7 Conferindo portas"
-PORT="$(env_port)"
+PORT="${RADAR_PORT:-$(env_port)}"
+case "$PORT" in ''|*[!0-9]*) echo "Porta inválida: $PORT"; exit 1 ;; esac
 owners="$(port_owners "$PORT")"
 if [ -n "$owners" ] && ! ours "$owners"; then
   echo "A porta $PORT já está em uso por: $owners"
@@ -120,6 +122,12 @@ if grep -qE '^\s*PORTAL_HOST\s*=' "$ENV_FILE"; then
   sed -i -E 's|^\s*PORTAL_HOST\s*=.*|PORTAL_HOST=127.0.0.1|' "$ENV_FILE"
 fi
 sed -i 's/\r$//' "$ENV_FILE"   # .env copiado do Windows (CRLF)
+# a porta escolhida fica no .env (o serviço e o nginx usam a mesma)
+if grep -qE '^\s*PORTAL_PORT\s*=' "$ENV_FILE"; then
+  sed -i -E "s|^\s*PORTAL_PORT\s*=.*|PORTAL_PORT=$PORT|" "$ENV_FILE"
+else
+  printf '\n# porta interna do portal (só 127.0.0.1; o nginx publica em HTTPS)\nPORTAL_PORT=%s\n' "$PORT" >> "$ENV_FILE"
+fi
 chown root:"$APP_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 

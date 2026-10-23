@@ -42,9 +42,9 @@ cria o `.venv`, o serviço e o site do nginx (com um certificado de teste) e con
 
 Antes de mexer em qualquer coisa, o instalador confere as portas e para com uma explicação se houver conflito:
 
-- **Porta interna do portal** (padrão `8000`, só em `127.0.0.1`): um sistema na `8001` não atrapalha. Se a `8000`
-  estiver ocupada, defina outra em `/opt/radar-marista/config/.env`, ex. `PORTAL_PORT=8010`, e rode o instalador de
-  novo (ele ajusta o serviço e o nginx para a porta nova). Sempre que mudar `PORTAL_PORT`, rode o `install.sh` (ou o
+- **Porta interna do portal** (padrão `8000`, só em `127.0.0.1`): se a `8000` estiver ocupada, na primeira instalação
+  informe outra na linha de comando (`sudo RADAR_PORT=8010 bash .../install.sh`); ela fica gravada como
+  `PORTAL_PORT` no `.env` e o serviço e o nginx passam a usá-la. Sempre que mudar `PORTAL_PORT`, rode o `install.sh` (ou o
   `update.sh --force`), não só o restart.
 - **nginx já publicando outro sistema**: informe o nome DNS do portal para os sites não se misturarem. O site padrão
   do nginx e os outros sites não são tocados:
