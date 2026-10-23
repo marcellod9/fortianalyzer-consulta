@@ -102,6 +102,10 @@ def machines_from_faz(q: CoverageQuery) -> tuple[list[dict], str, list[str]]:
     except FazError as e:
         log.info("FortiView top-sources indisponível: %s", e)
     origem = "FortiView Top Sources (período inteiro)"
+    if seen and q.so_computadores and not any(m["sistema"] for m in seen.values()):
+        # o Top Sources não traz o sistema operacional: as máquinas Windows vêm dos logs de tráfego (osname)
+        n = _windows_from_logs(client, q, seen, avisos)
+        origem += f" + sistema dos logs de tráfego ({n} log(s) de Windows lidos)"
     if not seen:
         lq = q.log_query("traffic")
         lq.limit = LOG_ROWS
@@ -120,6 +124,26 @@ def machines_from_faz(q: CoverageQuery) -> tuple[list[dict], str, list[str]]:
         m["firewall"] = m["firewall"].most_common(1)[0][0] if m["firewall"] else ""
         out.append(m)
     return out, origem, avisos
+
+
+def _windows_from_logs(client, q: CoverageQuery, seen: dict, avisos: list[str]) -> int:
+    """Completa o sistema (osname) das máquinas com os logs de tráfego de Windows do período."""
+    lq = q.log_query("traffic")
+    expr = " and ".join(p for p in (lq.filter_expr(), 'osname~"Windows"') if p)
+    try:
+        res = client.search_logs(adom=lq.adom, logtype="traffic", start=q.faz_time("start"), end=q.faz_time("end"),
+                                 filter_expr=expr, devices=lq.devices or None, limit=LOG_ROWS)
+    except FazError as e:
+        avisos.append(f"Não foi possível ler o sistema das máquinas nos logs de tráfego: {e}")
+        return 0
+    for lg in res["logs"]:
+        ip = str(lg.get("srcip") or "")
+        if ip and _private(ip):
+            _add(seen, ip, lg, when=explain.normalize(lg, "traffic")["data_hora"], sessions=0)
+    if res.get("mais"):
+        avisos.append(f"O período tem mais de {LOG_ROWS} logs de tráfego de Windows: o sistema foi lido dos mais recentes, "
+                      "então pode faltar alguma máquina. Use um período menor ou escolha o firewall da unidade.")
+    return len(res["logs"])
 
 
 def is_windows(m: dict) -> bool:

@@ -172,3 +172,28 @@ def test_fortiview_retries_with_a_smaller_limit_and_remembers_it():
     assert rows == [{"srcip": "10.0.0.1"}] and limits == [3000, 2000, 1000]
     c.fortiview("root", "top-sources", "2026-10-01 00:00:00", "2026-10-02 00:00:00", limit=3000)
     assert limits[-1] == 1000  # lembrou o limite aceito
+
+
+def test_fortiview_without_os_takes_windows_from_traffic_logs(monkeypatch):
+    calls = []
+
+    class Faz:
+        def fortiview(self, *a, **k):
+            return [{"srcip": "10.0.0.1", "sessions": 9}, {"srcip": "10.0.0.2", "sessions": 4}, {"srcip": "8.8.8.8"}]
+
+        def search_logs(self, **k):
+            calls.append(k["filter_expr"])
+            return {"logs": [{"srcip": "10.0.0.1", "osname": "Windows", "srcname": "NB-01", "itime": "1760000000"},
+                             {"srcip": "10.0.0.7", "osname": "Windows 11", "srcname": "NB-07", "itime": "1760000000"}],
+                    "total": 2, "mais": False}
+    monkeypatch.setattr(tc, "faz_client", lambda: Faz())
+    q = tc.CoverageQuery(start=NOW - timedelta(days=1), end=NOW)
+    machines, origem, _ = tc.machines_from_faz(q)
+    by = {m["ip"]: m for m in machines}
+    assert calls == ['osname~"Windows"'] and "sistema dos logs" in origem
+    assert [m["ip"] for m in machines if tc.is_windows(m)] == ["10.0.0.1", "10.0.0.7"]
+    assert by["10.0.0.1"]["maquina"] == "NB-01" and by["10.0.0.1"]["sessoes"] == 9
+    # sem o filtro Só Windows, nada de busca extra
+    calls.clear()
+    tc.machines_from_faz(tc.CoverageQuery(start=NOW - timedelta(days=1), end=NOW, so_computadores=False))
+    assert not calls
