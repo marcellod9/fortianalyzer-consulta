@@ -278,4 +278,5 @@ def test_automatic_refresh_prepares_the_default_threats_query(monkeypatch):
 
 
 def test_automatic_refresh_is_off_in_demo():
-    assert threats.start_warmer() is None  # testes rodam com PORTAL_DEMO=true
+    from app.services import warmup
+    assert warmup.start() is None  # testes rodam com PORTAL_DEMO=true

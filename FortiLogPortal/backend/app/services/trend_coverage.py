@@ -29,7 +29,7 @@ log = logging.getLogger("portal.trend")
 
 SOURCES_TOP = 3000        # linhas do FortiView Top Sources
 LOG_ROWS = 5000           # logs de tráfego lidos quando não há FortiView
-INVENTORY_TTL = 1800      # inventário do Vision One em cache (30 min)
+INVENTORY_TTL = 2700      # inventário do Vision One em cache (45 min; a atualização automática renova a cada 30 min)
 SHOW_MAX = 3000
 LOOKUP_MAX = 500          # máquinas fora da lista procuradas uma a uma no inventário (Endpoint Inventory)
 LOOKUP_BATCH = 10         # máquinas por consulta TMV1-Query

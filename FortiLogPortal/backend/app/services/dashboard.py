@@ -13,7 +13,7 @@ from .faz_filters import LogQuery
 from .logsearch import blocked_search
 
 
-def faz_overview(hours: int = 24, adom: str | None = None, refresh: bool = False) -> dict:
+def faz_overview(hours: int = 24, adom: str | None = None, refresh: bool = False, reuse: bool | None = None) -> dict:
     hours = max(1, min(hours, 168))
     adom = adom or settings.faz_default_adom
     key = f"dash:faz:{adom}:{hours}"
@@ -24,7 +24,8 @@ def faz_overview(hours: int = 24, adom: str | None = None, refresh: bool = False
             return hit
     end = datetime.now().replace(second=0, microsecond=0)
     q = LogQuery(adom=adom, start=end - timedelta(hours=hours), end=end, limit=settings.faz_max_results)
-    res = blocked_search(q, logtypes=("webfilter", "traffic", "app-ctrl"), keep=True, reuse=not refresh)
+    res = blocked_search(q, logtypes=("webfilter", "traffic", "app-ctrl"), keep=True,
+                         reuse=(not refresh) if reuse is None else reuse)
     rows = res["rows"]
     sites = Counter(r["site"] or r["ip_destino"] for r in rows if r["tipo_log"] in ("webfilter", "app-ctrl", "dns")
                     and (r["site"] or r["ip_destino"]))
@@ -45,7 +46,10 @@ def faz_overview(hours: int = 24, adom: str | None = None, refresh: bool = False
         "atualizado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "cache": False,
     }
-    database.cache_set(key, out, ttl=max(settings.cache_ttl, 300))
+    # com a atualização automática ligada, o resultado vale até a próxima rodada (a tela abre na hora)
+    warm = settings.warm_min * 60 + 300 if settings.warm_min and "dashboard" in settings.warm_tabs else 0
+    # com falha em algum tipo de log não segura o resultado incompleto por muito tempo
+    database.cache_set(key, out, ttl=60 if out["erros"] else max(settings.cache_ttl, 300, warm))
     return out
 
 

@@ -59,10 +59,13 @@ que começa antes do guardado é buscado inteiro. "Buscar tudo de novo no FortiA
 guardado. Ficam sempre ao vivo: tempo real, alertas do Event Monitor, Top Threats, agente Trend, isolamento e Trend
 inativo. Acima de `PORTAL_KEEP_MAX_MB` os mais antigos são apagados; *Configuração > Limpar cache* apaga tudo.
 
-Ameaças também é atualizada sozinha: a cada `THREATS_WARM_MIN` minutos (padrão 15; 0 desliga) uma thread do portal
-refaz a consulta padrão da tela (ADOM padrão, todos os firewalls, últimas `THREATS_WARM_HOURS` horas) e guarda os
-eventos. Quem abre a tela com esse padrão só espera os minutos novos. As buscas no FAZ (de todas as pessoas e dessa
-atualização) passam por uma fila com no máximo `FAZ_PARALLEL_SEARCHES` ao mesmo tempo.
+Atualização automática (`services/warmup.py`): a cada `PORTAL_WARM_MIN` minutos (padrão 15; 0 desliga) uma thread
+refaz a consulta padrão de cada aba de `PORTAL_WARM_TABS`, com a ADOM padrão e todos os firewalls: Ameaças (último
+1 dia), Dashboard (24h; o resultado fica pronto até a próxima rodada), Relatórios (geral, último 1 dia), Logs
+(tráfego, última 1 hora) e o inventário do Vision One usado por Trend inativo (a cada 2 rodadas). Quem abre a tela
+com esse padrão só espera os minutos novos. Diagnóstico e Reputação dependem do que a pessoa digita e continuam
+sob demanda. As buscas no FAZ (de todas as pessoas e dessa atualização) passam por uma fila com no máximo
+`FAZ_PARALLEL_SEARCHES` ao mesmo tempo.
 
 
 Credenciais **não** ficam no banco.

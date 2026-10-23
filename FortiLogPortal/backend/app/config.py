@@ -54,10 +54,12 @@ class Settings:
     faz_max_results: int = field(default_factory=lambda: _int("FAZ_MAX_RESULTS", 1000))
     faz_search_timeout: int = field(default_factory=lambda: _int("FAZ_SEARCH_TIMEOUT", 120))
     faz_parallel_searches: int = field(default_factory=lambda: _int("FAZ_PARALLEL_SEARCHES", 1))
-    # Ameaças: o portal refaz sozinho a consulta padrão (todos os firewalls da ADOM padrão) a cada N minutos,
-    # para os eventos já estarem guardados quando alguém abrir a tela (0 desliga)
-    threats_warm_min: int = field(default_factory=lambda: max(0, _int("THREATS_WARM_MIN", 15)))
-    threats_warm_hours: int = field(default_factory=lambda: max(1, min(_int("THREATS_WARM_HOURS", 24), 720)))
+    # o portal refaz sozinho a consulta padrão de cada aba a cada N minutos, para os eventos já estarem guardados
+    # quando alguém abrir a tela (0 desliga). PORTAL_WARM_TABS escolhe as abas.
+    warm_min: int = field(default_factory=lambda: max(0, _int("PORTAL_WARM_MIN", _int("THREATS_WARM_MIN", 15))))
+    warm_tabs: tuple = field(default_factory=lambda: tuple(
+        x.strip().lower() for x in os.getenv("PORTAL_WARM_TABS", "ameacas,dashboard,relatorios,logs,trend").split(",")
+        if x.strip()))
     # FortiGate opcional para a categoria FortiGuard de qualquer site (rating-lookup)
     faz_rating_device: str = field(default_factory=lambda: os.getenv("FAZ_RATING_DEVICE", ""))
     fgt_url: str = field(default_factory=lambda: os.getenv("FGT_URL", "").rstrip("/"))

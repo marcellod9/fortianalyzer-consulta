@@ -25,10 +25,10 @@ log = logging.getLogger("portal")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _startup()
-    from .services import threats
-    threats.start_warmer()
+    from .services import warmup
+    warmup.start()
     yield
-    threats.stop_warmer()
+    warmup.stop()
     fortianalyzer.reset_client()
     visionone.reset_client()
 
